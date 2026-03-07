@@ -29,9 +29,9 @@ class KnowledgeItem(SQLModel, table=True):
     source_type: str = Field(max_length=50)  # textbook / paper / guideline / case / technique
     source_ref: Optional[str] = Field(default=None, max_length=500)  # URL or citation
     
-    # Tags and metadata
+    # Tags and extra info
     tags: list = Field(default_factory=list, sa_column=Column(JSON))
-    metadata: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    extra_info: dict = Field(default_factory=dict, sa_column=Column(JSON))
     
     # Vector embedding for semantic search
     embedding: Optional[list[float]] = Field(

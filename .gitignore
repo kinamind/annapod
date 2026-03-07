@@ -50,3 +50,6 @@ coverage/
 # Build
 *.pyc
 __pycache__
+
+# PID files (start.sh)
+.pids/
