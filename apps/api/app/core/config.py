@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # LLM API (OpenAI-compatible endpoint)
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    LLM_MODEL: str = "gemini-2.5-flash-preview-05-20"
+    LLM_MODEL: str = "gemini-2.5-flash"
     
     # JWT Auth
     SECRET_KEY: str = "dev-secret-key-change-in-production"

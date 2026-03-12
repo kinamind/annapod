@@ -61,7 +61,7 @@ async def gen_complaint_chain(profile: dict, event: str) -> list[dict]:
     
     try:
         chain = json.loads(msg.tool_calls[0].function.arguments)["chain"]
-    except (AttributeError, IndexError, KeyError, json.JSONDecodeError):
+    except (TypeError, AttributeError, IndexError, KeyError, json.JSONDecodeError):
         # Fallback: generate a simple 3-stage chain
         chain = [
             {"stage": 1, "content": "初步表达不适感受"},

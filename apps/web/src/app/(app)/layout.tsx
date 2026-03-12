@@ -2,20 +2,26 @@
 
 import { useAuthStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar, MobileNav } from "@/components/sidebar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, token } = useAuthStore();
+  const { isLoading, token } = useAuthStore();
   const router = useRouter();
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !token) {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (hasMounted && !isLoading && !token) {
       router.replace("/login");
     }
-  }, [isLoading, token, router]);
+  }, [hasMounted, isLoading, token, router]);
 
-  if (!token) {
+  // Always render loading on server & first client render to avoid hydration mismatch
+  if (!hasMounted || !token) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="animate-pulse text-muted-foreground">加载中…</div>

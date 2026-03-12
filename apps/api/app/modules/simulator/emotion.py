@@ -121,7 +121,7 @@ async def emotion_inference(profile: dict, conversation: list[dict]) -> str:
     
     try:
         emotion = json.loads(msg.tool_calls[0].function.arguments)["emotion"]
-    except (AttributeError, IndexError, KeyError, json.JSONDecodeError):
+    except (TypeError, AttributeError, IndexError, KeyError, json.JSONDecodeError):
         emotion = "sadness"  # safe fallback for mental health context
     
     return emotion
