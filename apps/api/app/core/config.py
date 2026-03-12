@@ -16,10 +16,10 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/mindbridge"
     
-    # Gemini API (OpenAI-compatible endpoint)
-    GEMINI_API_KEY: str = ""
-    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    GEMINI_MODEL: str = "gemini-2.5-flash-preview-05-20"
+    # LLM API (OpenAI-compatible endpoint)
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    LLM_MODEL: str = "gemini-2.5-flash-preview-05-20"
     
     # JWT Auth
     SECRET_KEY: str = "dev-secret-key-change-in-production"

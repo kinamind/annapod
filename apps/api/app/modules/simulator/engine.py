@@ -3,7 +3,7 @@ SimulatorEngine — 虚拟来访者模拟核心引擎
 Adapted from AnnaAgent ms_patient.py
 
 Main changes from original:
-1. Uses Gemini API (via OpenAI-compatible interface) instead of fine-tuned models
+1. Uses LLM API (via OpenAI-compatible interface) instead of fine-tuned models
 2. All methods are async
 3. Long-term memory is toggleable (remove Status section from prompt)
 4. Supports caching of initialized state for reuse
@@ -183,7 +183,7 @@ class SimulatorEngine:
         client = get_llm_client()
         
         response = await client.chat.completions.create(
-            model=settings.GEMINI_MODEL,
+            model=settings.LLM_MODEL,
             messages=(
                 [{"role": "system", "content": self.system_prompt}]
                 + self.messages

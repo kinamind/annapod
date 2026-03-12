@@ -22,8 +22,8 @@ MindBridge（心桥）是一个基于 AI 的心理辅导员培训平台，通过
 | 前端 | Next.js 15, TypeScript, Tailwind CSS, shadcn/ui |
 | 后端 | FastAPI, Python 3.12+, SQLModel |
 | 数据库 | PostgreSQL, PGVector |
-| AI | Gemini 2.5 Flash (OpenAI-compatible API) |
-| 部署 | Google Cloud (Cloud Run + Cloud SQL) |
+| AI | LLM (OpenAI-compatible API) |
+| 部署 | Cloud Run + Cloud SQL |
 | 工具链 | uv (Python), pnpm (Node.js), Git |
 
 ## 快速开始

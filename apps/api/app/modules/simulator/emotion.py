@@ -2,7 +2,7 @@
 Emotion Modulation — 情绪推理与扰动模块
 Adapted from AnnaAgent emotion_modulator_fc.py + emotion_pertuber.py
 
-Uses Gemini API instead of fine-tuned emotion model.
+Uses LLM API instead of fine-tuned emotion model.
 """
 
 import json
@@ -98,7 +98,7 @@ def perturb_state(current_emotion: str) -> str:
 
 
 async def emotion_inference(profile: dict, conversation: list[dict]) -> str:
-    """Infer the next emotion using Gemini with function calling."""
+    """Infer the next emotion using LLM with function calling."""
     patient_info = (
         f"### 患者信息\n"
         f"年龄：{profile['age']}\n性别：{profile['gender']}\n"

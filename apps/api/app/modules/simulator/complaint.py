@@ -2,7 +2,7 @@
 Complaint Chain — 主诉认知变化链生成与切换
 Adapted from AnnaAgent complaint_chain_fc.py + complaint_elicitor.py
 
-Uses Gemini API instead of fine-tuned complaint model.
+Uses LLM API instead of fine-tuned complaint model.
 """
 
 import json
@@ -38,7 +38,7 @@ COMPLAINT_CHAIN_TOOL = {
 
 
 async def gen_complaint_chain(profile: dict, event: str) -> list[dict]:
-    """Generate complaint cognitive change chain using Gemini."""
+    """Generate complaint cognitive change chain using LLM."""
     patient_info = (
         f"### 患者信息\n年龄：{profile['age']}\n性别：{profile['gender']}\n"
         f"职业：{profile['occupation']}\n婚姻状况：{profile['marital_status']}\n"

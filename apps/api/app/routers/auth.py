@@ -1,6 +1,7 @@
 """MindBridge API - Auth Router."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
@@ -15,9 +16,9 @@ from app.schemas.auth import UserRegister, UserLogin, Token, UserResponse, UserU
 router = APIRouter(prefix="/auth", tags=["认证"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(data: UserRegister, session: AsyncSession = Depends(get_session)):
-    """注册新用户。"""
+    """注册新用户，返回JWT Token。"""
     # Check existing
     existing = await session.execute(
         select(User).where((User.email == data.email) | (User.username == data.username))
@@ -34,26 +35,31 @@ async def register(data: UserRegister, session: AsyncSession = Depends(get_sessi
     session.add(user)
     await session.commit()
     await session.refresh(user)
-    return user
+    
+    token = create_access_token(data={"sub": user.id})
+    return Token(access_token=token)
 
 
 @router.post("/login", response_model=Token)
-async def login(data: UserLogin, session: AsyncSession = Depends(get_session)):
-    """用户登录，返回JWT Token。"""
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: AsyncSession = Depends(get_session),
+):
+    """用户登录，返回JWT Token。支持OAuth2表单认证。"""
     stmt = select(User).where(
-        (User.username == data.username) | (User.email == data.username)
+        (User.username == form_data.username) | (User.email == form_data.username)
     )
     result = await session.execute(stmt)
     user = result.scalars().first()
     
-    if not user or not verify_password(data.password, user.hashed_password):
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     
     if not user.is_active:
         raise HTTPException(status_code=403, detail="账户已被禁用")
     
     # Update last login
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await session.commit()
     
     token = create_access_token(data={"sub": user.id})
@@ -87,7 +93,7 @@ async def update_me(
     for key, value in update_data.items():
         setattr(user, key, value)
     
-    user.updated_at = datetime.now(timezone.utc)
+    user.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await session.commit()
     await session.refresh(user)
     return user

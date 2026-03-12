@@ -33,7 +33,7 @@ class SeekerProfile(SQLModel, table=True):
     
     # Metadata
     source_id: Optional[str] = Field(default=None, max_length=100)  # original dataset ID
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class SeekerProfileCache(SQLModel, table=True):
@@ -55,5 +55,5 @@ class SeekerProfileCache(SQLModel, table=True):
     # Memory toggle state
     has_long_term_memory: bool = Field(default=True)
     
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     used_count: int = Field(default=0)

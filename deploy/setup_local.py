@@ -2,7 +2,7 @@
 MindBridge — pyinfra Local Development Setup
 
 One-click environment configuration and service startup.
-Handles: PostgreSQL (Docker), Python backend, Node.js frontend.
+Handles: PostgreSQL (local Homebrew), Python backend, Node.js frontend.
 
 Usage:
     # From project root:
@@ -26,7 +26,6 @@ DB_NAME = "mindbridge"
 DB_USER = "mindbridge"
 DB_PASS = "mindbridge"
 DB_PORT = "5432"
-DOCKER_PG_CONTAINER = "mindbridge-postgres"
 
 API_PORT = 8000
 WEB_PORT = 3000
@@ -41,7 +40,7 @@ def ensure_env():
         if os.path.exists(example):
             shutil.copy2(example, ENV_FILE)
             print(f"✅ Created {ENV_FILE} from .env.example")
-            print(f"⚠️  请编辑 {ENV_FILE} 填入你的 GEMINI_API_KEY")
+            print(f"⚠️  请编辑 {ENV_FILE} 填入你的 LLM_API_KEY")
         else:
             print(f"⚠️  No .env.example found — please create {ENV_FILE} manually")
     else:
@@ -54,74 +53,86 @@ python.call(
 )
 
 
-# ─── Step 2: Docker — PostgreSQL + pgvector ───────
+# ─── Step 2: Local PostgreSQL + pgvector ──────────
 def setup_postgres():
-    """Start PostgreSQL with pgvector via Docker."""
+    """Ensure local PostgreSQL is running with mindbridge database and pgvector."""
     import subprocess
+    import shutil
 
-    # Check if Docker is running
-    try:
-        subprocess.run(["docker", "info"], capture_output=True, check=True, timeout=10)
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        print("❌ Docker is not running. Please start Docker Desktop first.")
+    # Find pg_isready and psql binaries
+    pg_isready = shutil.which("pg_isready")
+    psql_bin = shutil.which("psql")
+    createdb_bin = shutil.which("createdb")
+
+    if not pg_isready:
+        for ver in ("17", "16", "15"):
+            for prefix in ("/usr/local/opt", "/opt/homebrew/opt"):
+                candidate = f"{prefix}/postgresql@{ver}/bin/pg_isready"
+                if os.path.isfile(candidate):
+                    pg_bin_dir = os.path.dirname(candidate)
+                    pg_isready = candidate
+                    psql_bin = os.path.join(pg_bin_dir, "psql")
+                    createdb_bin = os.path.join(pg_bin_dir, "createdb")
+                    break
+            if pg_isready:
+                break
+
+    if not pg_isready:
+        print("❌ PostgreSQL not found. Install via: brew install postgresql@17 pgvector")
         raise SystemExit(1)
 
-    # Check if container already exists and running
+    # Check if running
+    result = subprocess.run([pg_isready], capture_output=True, text=True)
+    if result.returncode != 0:
+        print("❌ PostgreSQL is not running. Start with: brew services start postgresql@17")
+        raise SystemExit(1)
+    print("✅ PostgreSQL is running")
+
+    current_user = os.environ.get("USER", "postgres")
+
+    # Create role if not exists
     result = subprocess.run(
-        ["docker", "ps", "-a", "--filter", f"name={DOCKER_PG_CONTAINER}", "--format", "{{.Status}}"],
+        [psql_bin, "-U", current_user, "-d", "postgres", "-tc",
+         f"SELECT 1 FROM pg_roles WHERE rolname='{DB_USER}'"],
         capture_output=True, text=True,
     )
-    status = result.stdout.strip()
-
-    if "Up" in status:
-        print(f"✅ PostgreSQL container '{DOCKER_PG_CONTAINER}' is already running")
-    elif status:
-        # Container exists but stopped — start it
-        print(f"🔄 Starting existing PostgreSQL container...")
-        subprocess.run(["docker", "start", DOCKER_PG_CONTAINER], check=True)
-        time.sleep(3)
-        print(f"✅ PostgreSQL container started")
-    else:
-        # Create new container with pgvector
-        print(f"📦 Creating PostgreSQL + pgvector container...")
-        subprocess.run([
-            "docker", "run", "-d",
-            "--name", DOCKER_PG_CONTAINER,
-            "-e", f"POSTGRES_DB={DB_NAME}",
-            "-e", f"POSTGRES_USER={DB_USER}",
-            "-e", f"POSTGRES_PASSWORD={DB_PASS}",
-            "-p", f"{DB_PORT}:5432",
-            "-v", f"mindbridge_pgdata:/var/lib/postgresql/data",
-            "pgvector/pgvector:pg17",
-        ], check=True)
-        print("⏳ Waiting for PostgreSQL to be ready...")
-        time.sleep(5)
-        print(f"✅ PostgreSQL container created and running on port {DB_PORT}")
-
-    # Verify connection
-    for attempt in range(10):
-        result = subprocess.run(
-            ["docker", "exec", DOCKER_PG_CONTAINER, "pg_isready", "-U", DB_USER],
-            capture_output=True, text=True,
+    if "1" not in result.stdout:
+        subprocess.run(
+            [psql_bin, "-U", current_user, "-d", "postgres", "-c",
+             f"CREATE ROLE {DB_USER} WITH LOGIN PASSWORD '{DB_PASS}' CREATEDB;"],
+            check=True,
         )
-        if result.returncode == 0:
-            print("✅ PostgreSQL is accepting connections")
-            break
-        time.sleep(1)
+        print(f"✅ Created role '{DB_USER}'")
     else:
-        print("⚠️  PostgreSQL not ready after 10 seconds — it may need more time")
+        print(f"✅ Role '{DB_USER}' exists")
 
-    # Ensure pgvector extension
-    subprocess.run([
-        "docker", "exec", DOCKER_PG_CONTAINER,
-        "psql", "-U", DB_USER, "-d", DB_NAME, "-c",
-        "CREATE EXTENSION IF NOT EXISTS vector;",
-    ], capture_output=True)
+    # Create database if not exists
+    result = subprocess.run(
+        [psql_bin, "-U", current_user, "-d", "postgres", "-tc",
+         f"SELECT 1 FROM pg_database WHERE datname='{DB_NAME}'"],
+        capture_output=True, text=True,
+    )
+    if "1" not in result.stdout:
+        subprocess.run(
+            [psql_bin, "-U", current_user, "-d", "postgres", "-c",
+             f"CREATE DATABASE {DB_NAME} OWNER {DB_USER};"],
+            check=True,
+        )
+        print(f"✅ Created database '{DB_NAME}'")
+    else:
+        print(f"✅ Database '{DB_NAME}' exists")
+
+    # Enable pgvector (requires superuser)
+    subprocess.run(
+        [psql_bin, "-U", current_user, "-d", DB_NAME, "-c",
+         "CREATE EXTENSION IF NOT EXISTS vector;"],
+        capture_output=True,
+    )
     print("✅ pgvector extension enabled")
 
 
 python.call(
-    name="Setup PostgreSQL (Docker + pgvector)",
+    name="Setup PostgreSQL (local + pgvector)",
     function=setup_postgres,
 )
 

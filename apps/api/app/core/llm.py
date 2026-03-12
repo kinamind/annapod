@@ -1,4 +1,4 @@
-"""MindBridge API - Shared LLM client for Gemini API calls."""
+"""MindBridge API - Shared LLM client (OpenAI-compatible)."""
 
 from openai import AsyncOpenAI
 from app.core.config import get_settings
@@ -7,10 +7,10 @@ settings = get_settings()
 
 
 def get_llm_client() -> AsyncOpenAI:
-    """Get an async OpenAI-compatible client configured for Gemini."""
+    """Get an async OpenAI-compatible LLM client."""
     return AsyncOpenAI(
-        api_key=settings.GEMINI_API_KEY,
-        base_url=settings.GEMINI_BASE_URL,
+        api_key=settings.LLM_API_KEY,
+        base_url=settings.LLM_BASE_URL,
     )
 
 
@@ -25,7 +25,7 @@ async def llm_chat(
     """Utility: single LLM chat completion call, return content text."""
     client = get_llm_client()
     kwargs = {
-        "model": model or settings.GEMINI_MODEL,
+        "model": model or settings.LLM_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,

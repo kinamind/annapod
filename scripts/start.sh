@@ -48,7 +48,6 @@ banner() {
 check_prereqs() {
     local missing=()
 
-    command -v docker &>/dev/null || missing+=("docker")
     command -v uv &>/dev/null || missing+=("uv (https://docs.astral.sh/uv/)")
     command -v pnpm &>/dev/null || missing+=("pnpm (npm install -g pnpm)")
     command -v node &>/dev/null || missing+=("node")
@@ -64,43 +63,44 @@ check_prereqs() {
 }
 
 ensure_postgres() {
-    local container_status
-    container_status=$(docker ps -a --filter "name=mindbridge-postgres" --format "{{.Status}}" 2>/dev/null || true)
+    # Try common pg_isready locations
+    local pg_isready="pg_isready"
+    if ! command -v pg_isready &>/dev/null; then
+        # macOS Homebrew
+        for ver in 17 16 15; do
+            if [[ -x "/usr/local/opt/postgresql@${ver}/bin/pg_isready" ]]; then
+                pg_isready="/usr/local/opt/postgresql@${ver}/bin/pg_isready"
+                break
+            fi
+            if [[ -x "/opt/homebrew/opt/postgresql@${ver}/bin/pg_isready" ]]; then
+                pg_isready="/opt/homebrew/opt/postgresql@${ver}/bin/pg_isready"
+                break
+            fi
+        done
+    fi
 
-    if [[ "$container_status" == *"Up"* ]]; then
+    if $pg_isready -q 2>/dev/null; then
         log_ok "PostgreSQL is running"
-        return
-    fi
-
-    if [[ -n "$container_status" ]]; then
-        log_info "Starting PostgreSQL container..."
-        docker start mindbridge-postgres >/dev/null
     else
-        log_info "Creating PostgreSQL + pgvector container..."
-        docker run -d \
-            --name mindbridge-postgres \
-            -e POSTGRES_DB=mindbridge \
-            -e POSTGRES_USER=mindbridge \
-            -e POSTGRES_PASSWORD=mindbridge \
-            -p 5432:5432 \
-            -v mindbridge_pgdata:/var/lib/postgresql/data \
-            pgvector/pgvector:pg17 >/dev/null
+        log_err "PostgreSQL is not running. Please start it first:"
+        echo "    brew services start postgresql@17"
+        exit 1
     fi
 
-    # Wait for ready
-    log_info "Waiting for PostgreSQL..."
-    for i in $(seq 1 15); do
-        if docker exec mindbridge-postgres pg_isready -U mindbridge &>/dev/null; then
-            log_ok "PostgreSQL ready"
-            # Ensure pgvector
-            docker exec mindbridge-postgres psql -U mindbridge -d mindbridge \
-                -c "CREATE EXTENSION IF NOT EXISTS vector;" &>/dev/null
-            return
-        fi
-        sleep 1
-    done
-    log_err "PostgreSQL failed to start within 15 seconds"
-    exit 1
+    # Ensure database and pgvector extension exist
+    local psql_bin="psql"
+    if ! command -v psql &>/dev/null; then
+        psql_bin="$(dirname "$pg_isready")/psql"
+    fi
+
+    # Create role and database if they don't exist
+    $psql_bin -U "$(whoami)" -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='mindbridge'" 2>/dev/null | grep -q 1 \
+        || $psql_bin -U "$(whoami)" -d postgres -c "CREATE ROLE mindbridge WITH LOGIN PASSWORD 'mindbridge' CREATEDB;" 2>/dev/null || true
+    $psql_bin -U "$(whoami)" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='mindbridge'" 2>/dev/null | grep -q 1 \
+        || $psql_bin -U "$(whoami)" -d postgres -c "CREATE DATABASE mindbridge OWNER mindbridge;" 2>/dev/null || true
+    $psql_bin -U "$(whoami)" -d mindbridge -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null || true
+
+    log_ok "PostgreSQL ready (database: mindbridge, pgvector: enabled)"
 }
 
 start_api() {
@@ -192,18 +192,23 @@ stop_services() {
     fi
 
     log_ok "All services stopped"
-    echo -e "  ${YELLOW}Note: PostgreSQL container still running. Stop with:${NC}"
-    echo "    docker stop mindbridge-postgres"
+    echo -e "  ${YELLOW}Note: PostgreSQL is managed by Homebrew. Stop with:${NC}"
+    echo "    brew services stop postgresql@17"
 }
 
 show_status() {
     echo -e "${BOLD}Service Status:${NC}"
     
     # PostgreSQL
-    local pg_status
-    pg_status=$(docker ps --filter "name=mindbridge-postgres" --format "{{.Status}}" 2>/dev/null || true)
-    if [[ -n "$pg_status" ]]; then
-        echo -e "  PostgreSQL: ${GREEN}$pg_status${NC}"
+    local pg_isready="pg_isready"
+    if ! command -v pg_isready &>/dev/null; then
+        for ver in 17 16 15; do
+            [[ -x "/usr/local/opt/postgresql@${ver}/bin/pg_isready" ]] && pg_isready="/usr/local/opt/postgresql@${ver}/bin/pg_isready" && break
+            [[ -x "/opt/homebrew/opt/postgresql@${ver}/bin/pg_isready" ]] && pg_isready="/opt/homebrew/opt/postgresql@${ver}/bin/pg_isready" && break
+        done
+    fi
+    if $pg_isready -q 2>/dev/null; then
+        echo -e "  PostgreSQL: ${GREEN}Running (local)${NC}"
     else
         echo -e "  PostgreSQL: ${RED}Not running${NC}"
     fi

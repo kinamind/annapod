@@ -47,7 +47,7 @@ class PerformanceRecord(SQLModel, table=True):
     issue_type: Optional[str] = Field(default=None, max_length=100)
     school_type: Optional[str] = Field(default=None, max_length=100)
     
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class LearningRecommendation(SQLModel, table=True):
@@ -74,7 +74,7 @@ class LearningRecommendation(SQLModel, table=True):
     is_read: bool = Field(default=False)
     is_completed: bool = Field(default=False)
     
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class UserStats(SQLModel, table=True):
@@ -102,4 +102,4 @@ class UserStats(SQLModel, table=True):
     # Mistake patterns
     common_mistakes: list = Field(default_factory=list, sa_column=Column(JSON))
     
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

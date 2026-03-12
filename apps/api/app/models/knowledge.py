@@ -36,11 +36,11 @@ class KnowledgeItem(SQLModel, table=True):
     # Vector embedding for semantic search
     embedding: Optional[list[float]] = Field(
         default=None,
-        sa_column=Column(Vector(768))  # Gemini embedding dimension
+        sa_column=Column(Vector(768))  # embedding dimension
     )
     
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 # Enumeration constants for the 3D knowledge dimensions

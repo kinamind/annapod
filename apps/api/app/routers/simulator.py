@@ -252,7 +252,7 @@ async def end_session(
     engine = _active_engines.get(data.session_id)
     
     # Calculate duration
-    cs.ended_at = datetime.now(timezone.utc)
+    cs.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
     cs.duration_seconds = int((cs.ended_at - cs.started_at).total_seconds())
     cs.status = "completed"
     

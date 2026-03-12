@@ -31,7 +31,7 @@ class CounselingSession(SQLModel, table=True):
     
     # Status
     status: str = Field(default="active", max_length=20)  # active / completed / abandoned
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     ended_at: Optional[datetime] = Field(default=None)
     duration_seconds: Optional[int] = Field(default=None)
     
@@ -53,5 +53,5 @@ class SessionGroup(SQLModel, table=True):
     session_count: int = Field(default=0)
     
     status: str = Field(default="active", max_length=20)  # active / completed
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
