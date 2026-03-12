@@ -29,7 +29,7 @@ _active_engines: dict[str, SimulatorEngine] = {}
 
 @router.get("/profiles", response_model=SeekerProfileListResponse)
 async def list_profiles(
-    group: str | None = None,
+    group_tag: str | None = None,
     difficulty: str | None = None,
     page: int = 1,
     page_size: int = 20,
@@ -38,8 +38,8 @@ async def list_profiles(
 ):
     """获取来访者档案列表，支持按群体和难度筛选。"""
     stmt = select(SeekerProfile)
-    if group:
-        stmt = stmt.where(SeekerProfile.group_tag == group)
+    if group_tag:
+        stmt = stmt.where(SeekerProfile.group_tag == group_tag)
     if difficulty:
         stmt = stmt.where(SeekerProfile.difficulty == difficulty)
     

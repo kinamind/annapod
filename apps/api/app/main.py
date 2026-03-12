@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.seed import seed_database
 from app.routers import auth_router, simulator_router, knowledge_router, learning_router
 
 settings = get_settings()
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     """Application lifecycle: startup & shutdown."""
     # Startup
     await init_db()
+    await seed_database()
     yield
     # Shutdown (cleanup if needed)
 

@@ -217,9 +217,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {stats.recommendations.slice(0, 6).map((rec) => (
+              {stats.recommendations.slice(0, 6).map((rec, idx) => (
                 <div
-                  key={rec.id}
+                  key={rec.id ?? idx}
                   className="rounded-lg border p-3 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-start justify-between">

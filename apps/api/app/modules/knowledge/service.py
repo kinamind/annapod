@@ -102,8 +102,8 @@ class KnowledgeService:
         total = total_result.scalar() or 0
         
         return {
-            "total": total,
-            "by_school": schools,
-            "by_issue": issues,
-            "by_difficulty": difficulties,
+            "total_items": total,
+            "schools": schools,
+            "issues": issues,
+            "difficulties": difficulties,
         }

@@ -58,6 +58,16 @@ async def search_knowledge(
     )
 
 
+@router.get("/stats/overview")
+async def get_knowledge_stats(
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(get_current_user_id),
+):
+    """获取知识库统计信息。"""
+    svc = KnowledgeService(session)
+    return await svc.get_stats()
+
+
 @router.get("/{item_id}", response_model=KnowledgeItemResponse)
 async def get_knowledge_item(
     item_id: str,
@@ -81,13 +91,3 @@ async def get_knowledge_item(
         source_ref=item.source_ref,
         tags=item.tags or [],
     )
-
-
-@router.get("/stats/overview")
-async def get_knowledge_stats(
-    session: AsyncSession = Depends(get_session),
-    user_id: str = Depends(get_current_user_id),
-):
-    """获取知识库统计信息。"""
-    svc = KnowledgeService(session)
-    return await svc.get_stats()
