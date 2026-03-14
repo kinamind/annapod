@@ -368,8 +368,12 @@ async def list_sessions(
         ret.append(SessionListItemResponse(
             id=cs.id,
             profile_id=cs.profile_id,
-                                                                                                                  duration_seconds=cs.duration_seconds,
+            status=cs.status,
+            started_at=cs.started_at,
+            ended_at=cs.ended_at,
+            duration_seconds=cs.duration_seconds,
             score=cs.score,
-            turn_count=turn            turn_count=turn            turn
+            turn_count=turn_count,
+            profile_summary=summary
         ))
     return ret
