@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from app.core.llm import llm_chat_text
 
+ROOT_DIR = Path(__file__).resolve().parents[5]
+
 # Teen-specific events
 TEEN_EVENTS = [
     "在一次重要的考试中表现不佳，比如期末考试、升学考试（如中考或高考），导致自信心受挫。",
@@ -31,7 +33,7 @@ def _load_events():
     global _events_df
     if _events_df is None:
         import pandas as pd
-        events_path = Path(__file__).parent.parent.parent.parent.parent / "data" / "scales" / "cbt-triggering-events.csv"
+        events_path = ROOT_DIR / "data" / "scales" / "cbt-triggering-events.csv"
         if events_path.exists():
             _events_df = pd.read_csv(events_path, header=0)
         else:

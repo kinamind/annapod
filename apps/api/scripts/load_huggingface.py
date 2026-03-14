@@ -37,9 +37,10 @@ import app.models.seeker  # noqa
 import app.models.session  # noqa
 import app.models.knowledge  # noqa
 import app.models.learning  # noqa
+import app.models.memory  # noqa
 
 
-DATASET_NAME = "BoStar/Anna-CPsyCounD"
+DATASET_NAME = "sci-m-wang/Anna-CPsyCounD"
 
 # Map common keywords in 案例类别 to group_tag and issue_tags
 CATEGORY_TO_GROUP = {
@@ -193,7 +194,13 @@ async def load_from_huggingface(max_records: int | None = None, replace: bool = 
             await session.commit()
             print("Cleared existing profiles")
 
+        existing_source_ids: set[str] = set()
+        if not replace:
+            existing_rows = await session.execute(select(SeekerProfile.source_id))
+            existing_source_ids = {sid for sid in existing_rows.scalars().all() if sid}
+
         count = 0
+        skipped = 0
         for i, record in enumerate(ds):
             portrait_raw = record.get("portrait", {})
             portrait = parse_portrait(json.dumps(portrait_raw) if isinstance(portrait_raw, dict) else str(portrait_raw or ""))
@@ -209,6 +216,11 @@ async def load_from_huggingface(max_records: int | None = None, replace: bool = 
                 if isinstance(categories, list):
                     symptoms = ";".join(categories)
 
+            source_id = str(record.get("id", i))
+            if source_id in existing_source_ids:
+                skipped += 1
+                continue
+
             profile = SeekerProfile(
                 id=str(uuid.uuid4()),
                 age=portrait.get("age", ""),
@@ -222,7 +234,7 @@ async def load_from_huggingface(max_records: int | None = None, replace: bool = 
                 report=report,
                 conversation=conversation,
                 portrait_raw=portrait_raw if isinstance(portrait_raw, dict) else {},
-                source_id=str(record.get("id", i)),
+                source_id=source_id,
             )
             session.add(profile)
             count += 1
@@ -233,6 +245,8 @@ async def load_from_huggingface(max_records: int | None = None, replace: bool = 
 
         await session.commit()
         print(f"✅ Imported {count} profiles from HuggingFace")
+        if skipped:
+            print(f"⏭ Skipped {skipped} duplicate profiles (by source_id)")
 
     await engine.dispose()
     print("🎉 Done!")

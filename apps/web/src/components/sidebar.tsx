@@ -12,46 +12,50 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  X,
+  Sun,
+  Moon,
+  Languages,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuthStore } from "@/lib/store";
+import { useLocale } from "@/lib/locale";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 
 const navItems = [
   {
-    title: "工作台",
+    titleKey: "nav.dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
-    title: "虚拟来访",
+    titleKey: "nav.simulator",
     href: "/simulator",
     icon: MessageSquare,
-    description: "AI 模拟咨询练习",
+    descKey: "nav.simulator.desc",
   },
   {
-    title: "知识宝库",
+    titleKey: "nav.knowledge",
     href: "/knowledge",
     icon: BookOpen,
-    description: "三维知识检索系统",
+    descKey: "nav.knowledge.desc",
   },
   {
-    title: "成长路径",
+    titleKey: "nav.learning",
     href: "/learning",
     icon: TrendingUp,
-    description: "个性化学习与评估",
+    descKey: "nav.learning.desc",
   },
   {
-    title: "场景预览",
+    titleKey: "nav.preview",
     href: "/preview",
     icon: Eye,
-    description: "即将推出",
+    descKey: "nav.preview.desc",
     disabled: true,
   },
   {
-    title: "个人中心",
+    titleKey: "nav.profile",
     href: "/profile",
     icon: User,
   },
@@ -61,6 +65,8 @@ function NavContent({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
+  const { theme, setTheme } = useTheme();
+  const { locale, setLocale, t } = useLocale();
 
   return (
     <div className="flex h-full flex-col">
@@ -70,8 +76,8 @@ function NavContent({ onClose }: { onClose?: () => void }) {
           心
         </div>
         <div className="flex flex-col">
-          <span className="text-sm font-semibold">MindBridge</span>
-          <span className="text-[10px] text-muted-foreground">心桥 · 咨询师训练</span>
+          <span className="text-sm font-semibold">{t("app.name")}</span>
+          <span className="text-[10px] text-muted-foreground">{t("app.subtitle")}</span>
         </div>
       </div>
 
@@ -94,22 +100,46 @@ function NavContent({ onClose }: { onClose?: () => void }) {
             >
               <item.icon className="h-4 w-4 shrink-0" />
               <div className="flex flex-col">
-                <span>{item.title}</span>
-                {item.description && (
+                <span>{t(item.titleKey)}</span>
+                {item.descKey && (
                   <span className="text-[10px] text-muted-foreground">
-                    {item.description}
+                    {t(item.descKey)}
                   </span>
                 )}
               </div>
               {item.disabled && (
                 <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px]">
-                  Soon
+                  {t("nav.soon")}
                 </span>
               )}
             </Link>
           );
         })}
       </nav>
+
+      {/* Theme & Language Controls */}
+      <div className="border-t px-3 py-2 space-y-1">
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-1 justify-start gap-2 h-8 text-xs"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            {theme === "dark" ? t("theme.light") : t("theme.dark")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-1 justify-start gap-2 h-8 text-xs"
+            onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {locale === "zh" ? "English" : "中文"}
+          </Button>
+        </div>
+      </div>
 
       {/* User Footer */}
       <div className="border-t p-3">

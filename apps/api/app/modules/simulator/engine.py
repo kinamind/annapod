@@ -11,7 +11,10 @@ Main changes from original:
 """
 
 import random
+import time
 from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm import get_llm_client, get_settings
 from app.modules.simulator.templates import build_system_prompt
@@ -39,11 +42,15 @@ class SimulatorEngine:
         portrait: dict,
         report: dict,
         previous_conversations: list[dict],
+        user_id: str,
+        profile_id: str,
         has_long_term_memory: bool = True,
     ):
         self.portrait = portrait
         self.report = report
         self.previous_conversations = previous_conversations
+        self.user_id = user_id
+        self.profile_id = profile_id
         self.has_long_term_memory = has_long_term_memory
         
         # Runtime state
@@ -58,6 +65,8 @@ class SimulatorEngine:
         self.situation: str = ""
         self.style: list[str] = []
         self.status: str = ""
+        self.init_duration_ms: int = 0
+        self.init_source: str = "fresh"
         
         self._initialized = False
     
@@ -66,6 +75,7 @@ class SimulatorEngine:
         Initialize the simulator engine — builds system prompt, complaint chain, etc.
         Returns the full initialization state for caching.
         """
+        t0 = time.perf_counter()
         # Basic configuration
         self.configuration["gender"] = self.portrait["gender"]
         self.configuration["age"] = self.portrait["age"]
@@ -122,6 +132,8 @@ class SimulatorEngine:
         self.system_prompt = build_system_prompt(self.configuration, self.has_long_term_memory)
         self.chain_index = 1
         self._initialized = True
+        self.init_duration_ms = int((time.perf_counter() - t0) * 1000)
+        self.init_source = "fresh"
         
         return self.get_state()
     
@@ -138,9 +150,11 @@ class SimulatorEngine:
         self.conversation = cache.get("conversation", [])
         self.messages = cache.get("messages", [])
         self.has_long_term_memory = cache.get("has_long_term_memory", True)
+        self.init_duration_ms = 0
+        self.init_source = "cache"
         self._initialized = True
     
-    async def chat(self, counselor_message: str) -> dict:
+    async def chat(self, counselor_message: str, db: Optional[AsyncSession] = None) -> dict:
         """
         Process a counselor message and generate seeker response.
         
@@ -165,16 +179,25 @@ class SimulatorEngine:
         complaint = transformed.get(self.chain_index, "表达当前的感受")
         
         # Build reminder with emotion + complaint + optional long-term memory info
-        reminder_parts = [f"当前的情绪状态是：{emotion}", f"当前的主诉是：{complaint}"]
+        reminder_parts = [
+            f"当前的情绪状态是：{emotion}",
+            f"当前的主诉是：{complaint}",
+            "你是来访者而非咨询师，只能用第一人称表达自己的体验，不给建议",
+        ]
         
         # Check if long-term memory query is needed
-        if self.has_long_term_memory and self.previous_conversations:
+        if self.has_long_term_memory and db is not None:
             needs_memory = await is_need_long_term_memory(counselor_message)
             if needs_memory:
                 sup_info = await query_long_term_memory(
-                    counselor_message, self.previous_conversations, self.report
+                    counselor_message,
+                    db,
+                    self.user_id,
+                    self.profile_id,
+                    self.report,
                 )
-                reminder_parts.append(f"涉及到之前疗程的信息是：{sup_info}")
+                if sup_info:
+                    reminder_parts.append(f"涉及到之前疗程的信息是：{sup_info}")
         
         reminder = "，".join(reminder_parts)
         
@@ -190,10 +213,41 @@ class SimulatorEngine:
                 + [{"role": "system", "content": reminder}]
             ),
             temperature=0.7,
-            max_tokens=400,
         )
         
         seeker_response = response.choices[0].message.content or ""
+
+        # Guardrail: if model drifts into counselor tone, force a rewrite as seeker speech.
+        if self._looks_like_counselor_tone(seeker_response):
+            rewrite = await client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是心理咨询中的来访者，只能用来访者第一人称口吻表达感受，不提供建议，不使用咨询师语气。",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"把这段话改写为来访者口吻（保留原始情绪与主诉）：\n{seeker_response}",
+                    },
+                ],
+                temperature=0.4,
+            )
+            seeker_response = rewrite.choices[0].message.content or seeker_response
+
+        if self._looks_incomplete(seeker_response):
+            complete = await client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "请把这句话补全为自然完整的来访者口语表达，不新增新的核心事实。",
+                    },
+                    {"role": "user", "content": seeker_response},
+                ],
+                temperature=0.2,
+            )
+            seeker_response = complete.choices[0].message.content or seeker_response
         
         # Update conversation
         self.conversation.append({"role": "Seeker", "content": seeker_response})
@@ -205,6 +259,34 @@ class SimulatorEngine:
             "complaint_stage": self.chain_index,
             "turn_count": len(self.conversation) // 2,
         }
+
+    @staticmethod
+    def _looks_like_counselor_tone(text: str) -> bool:
+        if not text:
+            return False
+
+        lowered = text.lower()
+        markers = [
+            "我听到了你",
+            "我理解你",
+            "建议你",
+            "你可以尝试",
+            "我们可以",
+            "作为咨询师",
+            "i hear that you",
+            "as your counselor",
+            "i suggest",
+        ]
+        return any(m in text for m in markers) or any(m in lowered for m in markers)
+
+    @staticmethod
+    def _looks_incomplete(text: str) -> bool:
+        s = (text or "").strip()
+        if not s:
+            return True
+        if s.endswith(("，", ",", "、", ";", "；", "：", ":", "-", "——")):
+            return True
+        return not s.endswith(("。", "！", "？", ".", "!", "?", "…"))
     
     def get_state(self) -> dict:
         """Export current engine state for persistence/caching."""
@@ -220,4 +302,6 @@ class SimulatorEngine:
             "conversation": self.conversation,
             "messages": self.messages,
             "has_long_term_memory": self.has_long_term_memory,
+            "init_duration_ms": self.init_duration_ms,
+            "init_source": self.init_source,
         }

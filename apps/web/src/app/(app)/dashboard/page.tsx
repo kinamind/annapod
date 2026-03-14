@@ -18,8 +18,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { EVAL_DIMENSIONS } from "@/lib/types";
+import { useLocale } from "@/lib/locale";
 
 export default function DashboardPage() {
+  const { t } = useLocale();
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => learning.getDashboard(),
@@ -33,7 +35,7 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">加载中…</div>
+        <div className="animate-pulse text-muted-foreground">{t("common.loading")}</div>
       </div>
     );
   }
@@ -44,8 +46,8 @@ export default function DashboardPage() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">工作台</h1>
-        <p className="text-muted-foreground">概览您的训练进度与学习推荐</p>
+        <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
+        <p className="text-muted-foreground">{t("dashboard.subtitle")}</p>
       </div>
 
       {/* Quick Stats */}
@@ -57,7 +59,7 @@ export default function DashboardPage() {
                 <MessageSquare className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">完成会话</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.sessions")}</p>
                 <p className="text-2xl font-bold">
                   {stats?.total_sessions ?? 0}
                 </p>
@@ -72,7 +74,7 @@ export default function DashboardPage() {
                 <Clock className="h-5 w-5 text-emerald-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">练习时长</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.hours")}</p>
                 <p className="text-2xl font-bold">
                   {(stats?.total_practice_hours ?? 0).toFixed(1)}h
                 </p>
@@ -87,7 +89,7 @@ export default function DashboardPage() {
                 <Target className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">平均得分</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.avgScore")}</p>
                 <p className="text-2xl font-bold">
                   {(stats?.average_score ?? 0).toFixed(1)}
                 </p>
@@ -102,7 +104,7 @@ export default function DashboardPage() {
                 <BookOpen className="h-5 w-5 text-purple-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">知识条目</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.knowledgeItems")}</p>
                 <p className="text-2xl font-bold">
                   {knowledgeStats?.total_items ?? 0}
                 </p>
@@ -116,10 +118,10 @@ export default function DashboardPage() {
         {/* Dimension Radar / Bar */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">能力维度</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.dimensions")}</CardTitle>
             <Link href="/learning">
               <Button variant="ghost" size="sm">
-                详情 <ArrowRight className="ml-1 h-3 w-3" />
+                {t("dashboard.detail")} <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </Link>
           </CardHeader>
@@ -142,10 +144,10 @@ export default function DashboardPage() {
             ) : (
               <div className="flex flex-col items-center py-8 text-muted-foreground">
                 <Brain className="h-10 w-10 mb-3 opacity-50" />
-                <p className="text-sm">完成首次模拟咨询后将显示能力分析</p>
+                <p className="text-sm">{t("dashboard.noDimension")}</p>
                 <Link href="/simulator" className="mt-3">
                   <Button size="sm" variant="outline">
-                    开始练习 <ArrowRight className="ml-1 h-3 w-3" />
+                    {t("dashboard.startPractice")} <ArrowRight className="ml-1 h-3 w-3" />
                   </Button>
                 </Link>
               </div>
@@ -158,7 +160,7 @@ export default function DashboardPage() {
           {/* Weak Areas */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">薄弱环节</CardTitle>
+              <CardTitle className="text-base">{t("dashboard.weakAreas")}</CardTitle>
             </CardHeader>
             <CardContent>
               {stats?.weak_dimensions && stats.weak_dimensions.length > 0 ? (
@@ -171,7 +173,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  暂无数据，请先完成练习
+                  {t("dashboard.noData")}
                 </p>
               )}
             </CardContent>
@@ -180,25 +182,25 @@ export default function DashboardPage() {
           {/* Quick Actions */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">快速操作</CardTitle>
+              <CardTitle className="text-base">{t("dashboard.quickActions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <Link href="/simulator" className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <MessageSquare className="mr-2 h-4 w-4 text-blue-500" />
-                  开始模拟咨询
+                  {t("dashboard.startSimulator")}
                 </Button>
               </Link>
               <Link href="/knowledge" className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <BookOpen className="mr-2 h-4 w-4 text-emerald-500" />
-                  浏览知识库
+                  {t("dashboard.browseKnowledge")}
                 </Button>
               </Link>
               <Link href="/learning" className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <TrendingUp className="mr-2 h-4 w-4 text-amber-500" />
-                  查看成长曲线
+                  {t("dashboard.viewGrowth")}
                 </Button>
               </Link>
             </CardContent>
@@ -212,7 +214,7 @@ export default function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Award className="h-4 w-4 text-amber-500" />
-              学习推荐
+              {t("dashboard.recommendations")}
             </CardTitle>
           </CardHeader>
           <CardContent>

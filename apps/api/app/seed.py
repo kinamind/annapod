@@ -24,6 +24,7 @@ import app.models.seeker  # noqa
 import app.models.session  # noqa
 import app.models.knowledge  # noqa
 import app.models.learning  # noqa
+import app.models.memory  # noqa
 
 settings = get_settings()
 
@@ -611,67 +612,33 @@ SAMPLE_KNOWLEDGE = [
 
 
 async def seed_database():
-    """Seed database with sample profiles and knowledge items."""
+    """Check database status without inserting demo/sample data.
+
+    Real production data must be loaded via ingestion pipelines:
+    - scripts/load_huggingface.py (seeker profiles)
+    - scripts/load_knowledge_pubmed.py (knowledge papers)
+    """
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with Session() as session:
-        # Check if profiles already exist
-        count_result = await session.execute(
-            select(func.count()).select_from(SeekerProfile)
-        )
-        existing_profiles = count_result.scalar() or 0
+        profiles_result = await session.execute(select(func.count()).select_from(SeekerProfile))
+        existing_profiles = profiles_result.scalar() or 0
 
-        if existing_profiles == 0:
-            for p in SAMPLE_PROFILES:
-                profile = SeekerProfile(
-                    id=str(uuid.uuid4()),
-                    age=p["age"],
-                    gender=p["gender"],
-                    occupation=p["occupation"],
-                    marital_status=p["marital_status"],
-                    symptoms=p["symptoms"],
-                    group_tag=p["group_tag"],
-                    difficulty=p["difficulty"],
-                    issue_tags=p.get("issue_tags"),
-                    report=p.get("report", {}),
-                    conversation=p.get("conversation", []),
-                    portrait_raw=p.get("portrait_raw", {}),
-                )
-                session.add(profile)
-            await session.commit()
-            print(f"✅ Seeded {len(SAMPLE_PROFILES)} seeker profiles")
-        else:
-            print(f"⏭ Skipped profiles — {existing_profiles} already exist")
+        knowledge_result = await session.execute(select(func.count()).select_from(KnowledgeItem))
+        existing_items = knowledge_result.scalar() or 0
 
-        # Seed knowledge items
-        count_result = await session.execute(
-            select(func.count()).select_from(KnowledgeItem)
-        )
-        existing_items = count_result.scalar() or 0
+        print(f"ℹ Profiles in DB: {existing_profiles}")
+        print(f"ℹ Knowledge items in DB: {existing_items}")
 
-        if existing_items == 0:
-            for k in SAMPLE_KNOWLEDGE:
-                item = KnowledgeItem(
-                    id=str(uuid.uuid4()),
-                    title=k["title"],
-                    school=k["school"],
-                    issue=k["issue"],
-                    difficulty=k["difficulty"],
-                    summary=k.get("summary", ""),
-                    content=k["content"],
-                    source_type=k.get("source_type", "textbook"),
-                    source_ref=k.get("source_ref"),
-                    tags=k.get("tags", []),
-                )
-                session.add(item)
-            await session.commit()
-            print(f"✅ Seeded {len(SAMPLE_KNOWLEDGE)} knowledge items")
-        else:
-            print(f"⏭ Skipped knowledge items — {existing_items} already exist")
+        if existing_profiles == 0 or existing_items == 0:
+            print("⚠ Empty data detected. Demo seed is disabled.")
+            print("   Run real ingestion pipelines:")
+            print("   - uv run python scripts/load_huggingface.py --replace")
+            print("   - uv run python scripts/load_knowledge_pubmed.py --replace")
 
     await engine.dispose()
-    print("🎉 Seed complete!")
+    print("✅ Startup data check complete (no sample data inserted).")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { knowledge } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BookOpen,
   Search,
@@ -32,6 +31,7 @@ import {
 import { useState } from "react";
 import type { KnowledgeItem } from "@/lib/types";
 import { SCHOOL_OPTIONS, ISSUE_OPTIONS, DIFFICULTY_LEVELS } from "@/lib/types";
+import { useLocale } from "@/lib/locale";
 
 const diffColor: Record<string, string> = {
   beginner: "bg-emerald-100 text-emerald-700",
@@ -39,15 +39,16 @@ const diffColor: Record<string, string> = {
   advanced: "bg-red-100 text-red-700",
 };
 
-const sourceLabel: Record<string, string> = {
-  textbook: "教材",
-  paper: "论文",
-  guideline: "指南",
-  case: "案例",
-  technique: "技术",
+const sourceLabelKey: Record<string, string> = {
+  textbook: "knowledge.source.textbook",
+  paper: "knowledge.source.paper",
+  guideline: "knowledge.source.guideline",
+  case: "knowledge.source.case",
+  technique: "knowledge.source.technique",
 };
 
 export default function KnowledgePage() {
+  const { locale, t } = useLocale();
   const [query, setQuery] = useState("");
   const [school, setSchool] = useState("");
   const [issue, setIssue] = useState("");
@@ -60,7 +61,7 @@ export default function KnowledgePage() {
     queryFn: () => knowledge.getDimensions(),
   });
 
-  const { data: result, isLoading } = useQuery({
+  const { data: result, isLoading, isError, refetch } = useQuery({
     queryKey: ["knowledge-search", query, school, issue, difficulty, page],
     queryFn: () =>
       knowledge.search({
@@ -87,16 +88,21 @@ export default function KnowledgePage() {
     setPage(1);
   };
 
+  const difficultyLabel = (key: string) => t(`difficulty.${key}`);
+  const totalPages = result ? Math.ceil(result.total / 12) : 1;
+  const pageText =
+    locale === "zh"
+      ? `${t("knowledge.page")} ${page} ${t("knowledge.pageOf")} ${totalPages} ${t("knowledge.pageSuffix")}`
+      : `${t("knowledge.page")} ${page} ${t("knowledge.pageOf")} ${totalPages}`;
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <BookOpen className="h-6 w-6" />
-          知识宝库
+          {t("knowledge.title")}
         </h1>
-        <p className="text-muted-foreground">
-          流派 × 议题 × 难度 三维结构化咨询知识库
-        </p>
+        <p className="text-muted-foreground">{t("knowledge.subtitle")}</p>
       </div>
 
       {/* Stats Overview */}
@@ -106,9 +112,9 @@ export default function KnowledgePage() {
             <CardContent className="p-4 flex items-center gap-3">
               <Layers className="h-5 w-5 text-blue-500" />
               <div>
-                <p className="text-xs text-muted-foreground">流派覆盖</p>
+                <p className="text-xs text-muted-foreground">{t("knowledge.stats.schools")}</p>
                 <p className="font-semibold">
-                  {Object.keys(stats.schools).length} 种
+                  {Object.keys(stats.schools).length} {t("knowledge.stats.kind")}
                 </p>
               </div>
             </CardContent>
@@ -117,9 +123,9 @@ export default function KnowledgePage() {
             <CardContent className="p-4 flex items-center gap-3">
               <Filter className="h-5 w-5 text-emerald-500" />
               <div>
-                <p className="text-xs text-muted-foreground">议题类型</p>
+                <p className="text-xs text-muted-foreground">{t("knowledge.stats.issues")}</p>
                 <p className="font-semibold">
-                  {Object.keys(stats.issues).length} 个
+                  {Object.keys(stats.issues).length} {t("knowledge.stats.count")}
                 </p>
               </div>
             </CardContent>
@@ -128,8 +134,8 @@ export default function KnowledgePage() {
             <CardContent className="p-4 flex items-center gap-3">
               <GraduationCap className="h-5 w-5 text-amber-500" />
               <div>
-                <p className="text-xs text-muted-foreground">总条目</p>
-                <p className="font-semibold">{stats.total_items} 条</p>
+                <p className="text-xs text-muted-foreground">{t("knowledge.stats.total")}</p>
+                <p className="font-semibold">{stats.total_items} {t("knowledge.stats.item")}</p>
               </div>
             </CardContent>
           </Card>
@@ -146,7 +152,7 @@ export default function KnowledgePage() {
               setQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="搜索知识条目…"
+            placeholder={t("knowledge.search.placeholder")}
             className="pl-9"
           />
         </div>
@@ -159,10 +165,10 @@ export default function KnowledgePage() {
           }}
         >
           <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="全部流派" />
+            <SelectValue placeholder={t("knowledge.school.all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">全部流派</SelectItem>
+            <SelectItem value="__all__">{t("knowledge.school.all")}</SelectItem>
             {(dimensions?.schools ?? SCHOOL_OPTIONS).map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -179,10 +185,10 @@ export default function KnowledgePage() {
           }}
         >
           <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="全部议题" />
+            <SelectValue placeholder={t("knowledge.issue.all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">全部议题</SelectItem>
+            <SelectItem value="__all__">{t("knowledge.issue.all")}</SelectItem>
             {(dimensions?.issues ?? ISSUE_OPTIONS).map((i) => (
               <SelectItem key={i} value={i}>
                 {i}
@@ -199,13 +205,13 @@ export default function KnowledgePage() {
           }}
         >
           <SelectTrigger className="w-[120px]">
-            <SelectValue placeholder="全部难度" />
+            <SelectValue placeholder={t("difficulty.all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">全部难度</SelectItem>
+            <SelectItem value="__all__">{t("difficulty.all")}</SelectItem>
             {DIFFICULTY_LEVELS.map((d) => (
               <SelectItem key={d.key} value={d.key}>
-                {d.label}
+                {difficultyLabel(d.key)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -213,7 +219,7 @@ export default function KnowledgePage() {
 
         {(query || school || issue || difficulty) && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
-            清除筛选
+            {t("common.clearFilters")}
           </Button>
         )}
       </div>
@@ -221,7 +227,15 @@ export default function KnowledgePage() {
       {/* Results */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="animate-pulse text-muted-foreground">搜索中…</div>
+          <div className="animate-pulse text-muted-foreground">{t("knowledge.loading")}</div>
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
+          <BookOpen className="h-10 w-10 mb-3 opacity-50" />
+          <p className="text-sm">{t("common.backendError")}</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+            {t("common.retry")}
+          </Button>
         </div>
       ) : (
         <>
@@ -243,8 +257,7 @@ export default function KnowledgePage() {
                         diffColor[item.difficulty] ?? "bg-muted"
                       )}
                     >
-                      {DIFFICULTY_LEVELS.find((d) => d.key === item.difficulty)
-                        ?.label ?? item.difficulty}
+                      {difficultyLabel(item.difficulty)}
                     </Badge>
                   </div>
 
@@ -262,7 +275,7 @@ export default function KnowledgePage() {
                       {item.issue}
                     </Badge>
                     <Badge variant="secondary" className="text-[10px]">
-                      {sourceLabel[item.source_type] ?? item.source_type}
+                      {t(sourceLabelKey[item.source_type] ?? item.source_type)}
                     </Badge>
                   </div>
                 </CardContent>
@@ -273,14 +286,14 @@ export default function KnowledgePage() {
           {result && result.items.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
               <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">未找到匹配的知识条目</p>
+              <p className="text-sm">{t("knowledge.empty")}</p>
               <Button
                 variant="link"
                 size="sm"
                 onClick={clearFilters}
                 className="mt-2"
               >
-                清除筛选条件
+                {t("knowledge.clearFilters")}
               </Button>
             </div>
           )}
@@ -293,18 +306,16 @@ export default function KnowledgePage() {
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
               >
-                上一页
+                {t("common.prev")}
               </Button>
-              <span className="text-sm text-muted-foreground">
-                第 {page} 页 / 共 {Math.ceil(result.total / 12)} 页
-              </span>
+              <span className="text-sm text-muted-foreground">{pageText}</span>
               <Button
                 variant="outline"
                 size="sm"
                 disabled={page * 12 >= result.total}
                 onClick={() => setPage((p) => p + 1)}
               >
-                下一页
+                {t("common.next")}
               </Button>
             </div>
           )}
@@ -328,12 +339,10 @@ export default function KnowledgePage() {
                       diffColor[selected.difficulty] ?? "bg-muted"
                     }
                   >
-                    {DIFFICULTY_LEVELS.find(
-                      (d) => d.key === selected.difficulty
-                    )?.label ?? selected.difficulty}
+                    {difficultyLabel(selected.difficulty)}
                   </Badge>
                   <Badge variant="secondary">
-                    {sourceLabel[selected.source_type] ?? selected.source_type}
+                    {t(sourceLabelKey[selected.source_type] ?? selected.source_type)}
                   </Badge>
                 </div>
               </DialogHeader>
@@ -345,7 +354,7 @@ export default function KnowledgePage() {
               {selected.source_ref && (
                 <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                   <ExternalLink className="h-3 w-3" />
-                  <span>来源: {selected.source_ref}</span>
+                  <span>{t("knowledge.source")}: {selected.source_ref}</span>
                 </div>
               )}
               {selected.tags.length > 0 && (

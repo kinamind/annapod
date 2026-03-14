@@ -46,7 +46,16 @@ async function request<T>(
     ...(options.headers || {}),
   };
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (err: unknown) {
+    const detail =
+      err instanceof Error && err.message
+        ? `网络请求失败: ${err.message}`
+        : "网络请求失败，请检查后端服务与网络连接";
+    throw new ApiError(0, detail);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
@@ -151,6 +160,20 @@ export const simulator = {
   getSessionGroups() {
     return request<SessionGroup[]>("/api/v1/simulator/session-groups");
   },
+
+  getSessions() {
+    return request<Array<{
+      id: string;
+      profile_id: string;
+      status: string;
+      started_at: string;
+      ended_at?: string;
+      duration_seconds?: number;
+      score?: number;
+      turn_count: number;
+      profile_summary: string;
+    }>>("/api/v1/simulator/sessions");
+  },
 };
 
 // ─── Knowledge Base ──────────────────────────────
@@ -225,4 +248,6 @@ export const learning = {
   },
 };
 
-export default { auth, simulator, knowledge, learning };
+const api = { auth, simulator, knowledge, learning };
+
+export default api;

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select, col
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
+from openai import RateLimitError, APIConnectionError, APITimeoutError, APIError
 
 from app.core.database import get_session
 from app.core.security import get_current_user_id
@@ -14,10 +15,11 @@ from app.schemas.simulator import (
     StartSessionRequest, StartSessionResponse,
     ChatRequest, ChatResponse,
     EndSessionRequest, EndSessionResponse,
-    SessionGroupResponse,
+    SessionGroupResponse, SessionListItemResponse,
 )
 from app.modules.simulator.engine import SimulatorEngine
 from app.modules.simulator.profile_manager import ProfileManager
+from app.modules.simulator.memory import index_long_term_memory
 from app.modules.learning.evaluator import evaluate_session
 
 router = APIRouter(prefix="/simulator", tags=["虚拟来访者模拟"])
@@ -88,32 +90,28 @@ async def start_session(
     # Handle session group for multi-session mode
     session_group_id = data.session_group_id
     session_number = 1
-    previous_conversations = profile.conversation  # default from dataset
+    # AnnaAgent base context from profile dataset only.
+    # Historical user sessions are retrieved via long-term memory vector search during chat.
+    previous_conversations = profile.conversation
     
     if data.enable_long_term_memory and session_group_id:
         # Load previous session data from group
         group = await session.get(SessionGroup, session_group_id)
         if group:
-            # Get the latest completed session in this group for memory
+            # Count previous completed sessions for this user/profile in long-term mode.
             prev_stmt = (
                 select(CounselingSession)
                 .where(
                     CounselingSession.user_id == user_id,
+                    CounselingSession.profile_id == data.profile_id,
+                    CounselingSession.has_long_term_memory == True,
                     CounselingSession.status == "completed",
                 )
                 .order_by(CounselingSession.ended_at.desc())
-                .limit(1)
             )
             prev_result = await session.execute(prev_stmt)
-            prev_session = prev_result.scalars().first()
-            if prev_session and prev_session.messages:
-                # Merge dataset conversations with actual session history
-                previous_conversations = profile.conversation + [
-                    {"role": "Counselor" if m["role"] == "user" else "Seeker", "content": m["content"]}
-                    for m in prev_session.messages
-                    if m.get("role") in ("user", "assistant")
-                ]
-            session_number = group.session_count + 1
+            prev_sessions = prev_result.scalars().all()
+            session_number = len(prev_sessions) + 1
     elif data.enable_long_term_memory and not session_group_id:
         # Create new session group
         group = SessionGroup(
@@ -139,6 +137,8 @@ async def start_session(
         portrait=portrait,
         report=profile.report,
         previous_conversations=previous_conversations,
+        user_id=user_id,
+        profile_id=data.profile_id,
         has_long_term_memory=data.enable_long_term_memory,
     )
     
@@ -202,6 +202,8 @@ async def start_session(
         session_group_id=session_group_id,
         profile_summary=profile_summary,
         session_number=session_number,
+        init_source=engine.init_source,
+        init_duration_ms=engine.init_duration_ms,
     )
 
 
@@ -221,7 +223,28 @@ async def chat(
     if not cs or cs.user_id != user_id:
         raise HTTPException(status_code=403, detail="无权访问此 session")
     
-    result = await engine.chat(data.message)
+    try:
+        result = await engine.chat(data.message, db=session)
+    except RateLimitError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="LLM 调用达到速率限制，请稍后重试（约 30-60 秒）。"
+        ) from exc
+    except (APIConnectionError, APITimeoutError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM 服务连接异常，请稍后重试。"
+        ) from exc
+    except APIError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="LLM 服务返回异常，请稍后重试。"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="会话生成失败，请重试或重新开始会话。"
+        ) from exc
     
     # Persist conversation state
     cs.messages = engine.messages.copy()
@@ -273,6 +296,17 @@ async def end_session(
     
     # Cleanup engine
     _active_engines.pop(data.session_id, None)
+
+    # Index long-term memory only for sessions with long-term mode enabled.
+    if cs.has_long_term_memory and cs.messages:
+        await index_long_term_memory(
+            db=session,
+            user_id=user_id,
+            profile_id=cs.profile_id,
+            session_id=cs.id,
+            messages=cs.messages,
+        )
+        await session.commit()
     
     return EndSessionResponse(
         session_id=cs.id,
@@ -310,3 +344,32 @@ async def list_session_groups(
     result = await session.execute(stmt)
     groups = result.scalars().all()
     return [SessionGroupResponse(**g.__dict__) for g in groups]
+
+@router.get("/sessions", response_model=list[SessionListItemResponse])
+async def list_sessions(
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(get_current_user_id),
+):
+    """获取用户所有的 session 列表。"""
+    stmt = (
+        select(CounselingSession, SeekerProfile)
+        .join(SeekerProfile, CounselingSession.profile_id == SeekerProfile.id)
+        .where(CounselingSession.user_id == user_id)
+        .order_by(CounselingSession.started_at.desc())
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+    
+    ret = []
+    for cs, profile in rows:
+        summary = f"{profile.gender}，{profile.age}岁，{profile.occupation}，{profile.marital_status}"
+        turn_count = sum(1 for m in cs.messages if m.get("role") == "Seeker")
+        
+        ret.append(SessionListItemResponse(
+            id=cs.id,
+            profile_id=cs.profile_id,
+                                                                                                                  duration_seconds=cs.duration_seconds,
+            score=cs.score,
+            turn_count=turn            turn_count=turn            turn
+        ))
+    return ret

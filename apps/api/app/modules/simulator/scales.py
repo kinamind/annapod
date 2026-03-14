@@ -10,7 +10,8 @@ import re
 from pathlib import Path
 from app.core.llm import llm_chat_text
 
-SCALES_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "scales"
+ROOT_DIR = Path(__file__).resolve().parents[5]
+SCALES_DIR = ROOT_DIR / "data" / "scales"
 
 
 def _load_scale(name: str) -> dict:

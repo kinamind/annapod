@@ -1,14 +1,18 @@
-"""
-Long-term Memory — 长期记忆查询模块
-Adapted from AnnaAgent querier.py
+"""Long-term Memory — AnnaAgent-style gated retrieval with vector search."""
 
-Handles:
-- is_need: determine if counselor's utterance refers to previous sessions
-- query: retrieve relevant info from previous session history + report
-"""
-
+import asyncio
+import json
 import re
+from urllib.request import Request, urlopen
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from app.core.config import get_settings
 from app.core.llm import llm_chat_text
+from app.models.memory import LongTermMemoryChunk
+
+settings = get_settings()
 
 
 def _extract_boolean(text: str) -> bool:
@@ -58,14 +62,103 @@ async def is_need_long_term_memory(utterance: str) -> bool:
     return _extract_boolean(response_text)
 
 
+def _embed_text_sync(text: str) -> list[float]:
+    """Embed text via Gemini embedding API."""
+    if not settings.EMBEDDING_API_KEY:
+        return []
+
+    endpoint = (
+        f"{settings.EMBEDDING_BASE_URL}/models/{settings.EMBEDDING_MODEL}:embedContent"
+        f"?key={settings.EMBEDDING_API_KEY}"
+    )
+    payload = {
+        "model": f"models/{settings.EMBEDDING_MODEL}",
+        "content": {
+            "parts": [{"text": text[:4000]}],
+        },
+    }
+
+    req = Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urlopen(req, timeout=20) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    values = data.get("embedding", {}).get("values", [])
+    return [float(v) for v in values]
+
+
+async def embed_text(text: str) -> list[float]:
+    return await asyncio.to_thread(_embed_text_sync, text)
+
+
+async def index_long_term_memory(
+    db: AsyncSession,
+    user_id: str,
+    profile_id: str,
+    session_id: str,
+    messages: list[dict],
+) -> int:
+    """Index this session's messages into vector store (long-term mode only)."""
+    inserted = 0
+    for idx, m in enumerate(messages):
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        if role not in ("user", "assistant") or not content:
+            continue
+
+        vec = await embed_text(content)
+        if not vec:
+            continue
+
+        db.add(
+            LongTermMemoryChunk(
+                user_id=user_id,
+                profile_id=profile_id,
+                session_id=session_id,
+                turn_index=idx,
+                role=role,
+                content=content,
+                embedding=vec,
+            )
+        )
+        inserted += 1
+
+    return inserted
+
+
 async def query_long_term_memory(
     utterance: str,
-    previous_conversations: list[dict],
+    db: AsyncSession,
+    user_id: str,
+    profile_id: str,
     report: dict,
+    top_k: int = 6,
 ) -> str:
-    """Query previous session data for relevant info about counselor's question."""
+    """Retrieve relevant long-term memory chunks from vector DB and summarize."""
+    query_vec = await embed_text(utterance)
+    if not query_vec:
+        return ""
+
+    stmt = (
+        select(LongTermMemoryChunk)
+        .where(
+            LongTermMemoryChunk.user_id == user_id,
+            LongTermMemoryChunk.profile_id == profile_id,
+        )
+        .order_by(LongTermMemoryChunk.embedding.cosine_distance(query_vec))
+        .limit(top_k)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    if not rows:
+        return ""
+
     dialogue_history = "\n".join(
-        f"{conv['role']}: {conv['content']}" for conv in previous_conversations
+        f"{r.role}: {r.content}" for r in rows
     )
     report_str = "\n".join(
         f"{k}: {v}" for k, v in report.items()

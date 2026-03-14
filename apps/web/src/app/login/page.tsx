@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/store";
 import { toast } from "sonner";
+import { useLocale } from "@/lib/locale";
 
 export default function LoginPage() {
+  const { t } = useLocale();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const { login, isLoading } = useAuthStore();
@@ -20,10 +22,10 @@ export default function LoginPage() {
     e.preventDefault();
     try {
       await login(username, password);
-      toast.success("登录成功！");
+      toast.success(t("auth.login.success"));
       router.push("/dashboard");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "登录失败";
+      const msg = err instanceof Error ? err.message : t("auth.login.failed");
       toast.error(msg);
     }
   };
@@ -37,43 +39,43 @@ export default function LoginPage() {
               心
             </div>
           </div>
-          <CardTitle className="text-2xl">登录 MindBridge</CardTitle>
+          <CardTitle className="text-2xl">{t("auth.login.title")}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            心桥 · AI 咨询师训练平台
+            {t("auth.login.subtitle")}
           </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">用户名或邮箱</Label>
+              <Label htmlFor="username">{t("auth.login.user")}</Label>
               <Input
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="输入用户名或邮箱"
+                placeholder={t("auth.login.userPlaceholder")}
                 required
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">密码</Label>
+              <Label htmlFor="password">{t("auth.login.password")}</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="输入密码"
+                placeholder={t("auth.login.passwordPlaceholder")}
                 required
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "登录中…" : "登 录"}
+              {isLoading ? t("auth.login.loading") : t("auth.login.submit")}
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            还没有帐号？{" "}
+            {t("auth.login.noAccount")}{" "}
             <Link href="/register" className="text-primary underline">
-              免费注册
+              {t("auth.login.register")}
             </Link>
           </p>
         </CardContent>

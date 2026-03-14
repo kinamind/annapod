@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/store";
 import { toast } from "sonner";
+import { useLocale } from "@/lib/locale";
 
 export default function RegisterPage() {
+  const { t } = useLocale();
   const [form, setForm] = useState({
     email: "",
     username: "",
@@ -24,7 +26,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password !== form.confirmPassword) {
-      toast.error("两次密码不一致");
+      toast.error(t("auth.register.passwordMismatch"));
       return;
     }
     try {
@@ -34,10 +36,10 @@ export default function RegisterPage() {
         display_name: form.display_name,
         password: form.password,
       });
-      toast.success("注册成功！欢迎使用 MindBridge");
+      toast.success(t("auth.register.success"));
       router.push("/dashboard");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "注册失败";
+      const msg = err instanceof Error ? err.message : t("auth.register.failed");
       toast.error(msg);
     }
   };
@@ -54,15 +56,15 @@ export default function RegisterPage() {
               心
             </div>
           </div>
-          <CardTitle className="text-2xl">注册 MindBridge</CardTitle>
+          <CardTitle className="text-2xl">{t("auth.register.title")}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            创建帐号，开始您的咨询训练之旅
+            {t("auth.register.subtitle")}
           </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">邮箱</Label>
+              <Label htmlFor="email">{t("auth.register.email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -75,7 +77,7 @@ export default function RegisterPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="username">用户名</Label>
+                <Label htmlFor="username">{t("auth.register.username")}</Label>
                 <Input
                   id="username"
                   value={form.username}
@@ -85,48 +87,48 @@ export default function RegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="display_name">显示名称</Label>
+                <Label htmlFor="display_name">{t("auth.register.displayName")}</Label>
                 <Input
                   id="display_name"
                   value={form.display_name}
                   onChange={(e) => update("display_name", e.target.value)}
-                  placeholder="您的名字"
+                  placeholder={t("auth.register.displayNamePlaceholder")}
                   required
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">密码</Label>
+              <Label htmlFor="password">{t("auth.register.password")}</Label>
               <Input
                 id="password"
                 type="password"
                 value={form.password}
                 onChange={(e) => update("password", e.target.value)}
-                placeholder="至少 6 位"
+                placeholder={t("auth.register.passwordPlaceholder")}
                 required
                 minLength={6}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">确认密码</Label>
+              <Label htmlFor="confirmPassword">{t("auth.register.confirmPassword")}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
                 value={form.confirmPassword}
                 onChange={(e) => update("confirmPassword", e.target.value)}
-                placeholder="再次输入密码"
+                placeholder={t("auth.register.confirmPasswordPlaceholder")}
                 required
                 minLength={6}
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "注册中…" : "注 册"}
+              {isLoading ? t("auth.register.loading") : t("auth.register.submit")}
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            已有帐号？{" "}
+            {t("auth.register.hasAccount")}{" "}
             <Link href="/login" className="text-primary underline">
-              立即登录
+              {t("auth.register.toLogin")}
             </Link>
           </p>
         </CardContent>

@@ -49,6 +49,34 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    // Load existing session data
+    async function loadSession() {
+      try {
+        const data = await simulator.getSession(sessionId);
+        if (data.messages && data.messages.length > 0) {
+          const formattedMsgs: ChatMessage[] = data.messages.map(m => ({
+            role: m.role.toLowerCase() === "seeker" || m.role.toLowerCase() === "client" ? "client" : "counselor",
+            content: m.content,
+            timestamp: new Date().toISOString(), // Mock timestamp for history
+          }));
+          setMessages(formattedMsgs);
+          const cCount = formattedMsgs.filter(m => m.role === "client").length;
+          setTurnCount(cCount);
+        }
+        if (data.status === "completed") {
+          setSessionEnded(true);
+          const ev = data.evaluation as Record<string, string> | undefined;
+          if (ev) setEvaluation(ev);
+          if (data.score) setScore(data.score);
+        }
+      } catch (err) {
+        console.error("Failed to load session:", err);
+      }
+    }
+    loadSession();
+  }, [sessionId]);
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 

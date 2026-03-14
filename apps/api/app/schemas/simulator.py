@@ -48,6 +48,8 @@ class StartSessionResponse(BaseModel):
     session_group_id: Optional[str] = None
     profile_summary: str
     session_number: int
+    init_source: Optional[str] = None  # fresh / cache
+    init_duration_ms: Optional[int] = None
 
 
 class EndSessionRequest(BaseModel):
@@ -69,3 +71,17 @@ class SessionGroupResponse(BaseModel):
     description: Optional[str] = None
     session_count: int
     status: str
+
+    
+from datetime import datetime
+
+class SessionListItemResponse(BaseModel):
+    id: str
+    profile_id: str
+    status: str
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    duration_seconds: Optional[int] = None
+    score: Optional[float] = None
+    turn_count: int
+    profile_summary: str
