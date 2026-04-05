@@ -689,7 +689,18 @@ async function handleApi(request: Request, env: CloudflareEnv) {
   const evaluationMatch = pathname.match(/^\/api\/v1\/learning\/sessions\/([^/]+)\/evaluation$/);
   if (evaluationMatch && request.method === "GET") return getSessionEvaluation(request, env, evaluationMatch[1]);
 
-  if (pathname === "/api/v1/health") return jsonResponse({ ok: true, runtime: "cloudflare-pages" });
+  if (pathname === "/api/v1/health") {
+    return jsonResponse({
+      ok: true,
+      runtime: "cloudflare-pages",
+      diagnostics: {
+        has_jwt_secret: Boolean(env.JWT_SECRET?.trim()),
+        has_ai_api_key: Boolean(env.AI_API_KEY?.trim()),
+        has_db_binding: Boolean(env.DB),
+        has_memory_index: Boolean(env.MEMORY_INDEX),
+      },
+    });
+  }
 
   return errorResponse("Not found", 404);
 }
