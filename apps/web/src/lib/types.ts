@@ -50,6 +50,8 @@ export interface StartSessionResponse {
   session_group_id?: string;
   profile_summary: string;
   session_number: number;
+  init_source?: string;
+  init_duration_ms?: number;
 }
 
 export interface ChatMessage {
@@ -82,6 +84,10 @@ export interface SessionGroup {
   description?: string;
   session_count: number;
   status: string;
+  profile_summary?: string;
+  last_started_at?: string;
+  completed_sessions?: number;
+  active_sessions?: number;
 }
 
 // ─── Knowledge Base ──────────────────────────────

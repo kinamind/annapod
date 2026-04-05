@@ -24,6 +24,14 @@ function splitSymptoms(symptoms: string) {
     .filter(Boolean);
 }
 
+function patientInfo(profile: SessionSnapshot["profile"]) {
+  return `### 患者信息\n年龄：${profile.age}\n性别：${profile.gender}\n职业：${profile.occupation}\n婚姻状况：${profile.marital_status}\n症状：${profile.symptoms}`;
+}
+
+function dialogueHistory(conversation: ConversationMessage[]) {
+  return conversation.map((conv) => `${conv.role}: ${conv.content}`).join("\n");
+}
+
 export function createComplaintChain(profile: SessionSnapshot["profile"]): ComplaintStage[] {
   const symptom = splitSymptoms(profile.symptoms)[0] || "最近的困扰";
   return [
@@ -141,6 +149,46 @@ export function inferEmotion(snapshot: SessionSnapshot) {
   return snapshot.chainIndex >= 3 ? "sadness" : "confusion";
 }
 
+export async function emotionModulation(
+  env: CloudflareEnv,
+  profile: SessionSnapshot["profile"],
+  conversation: ConversationMessage[]
+) {
+  const prompt = `### 任务\n根据患者情况及咨访对话历史记录推测患者下一句话最可能的情绪。\n${patientInfo(profile)}\n### 对话记录\n${dialogueHistory(conversation)}`;
+  const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
+  const lowered = text.toLowerCase();
+  const candidates = [
+    "admiration", "amusement", "anger", "annoyance", "approval", "caring",
+    "confusion", "curiosity", "desire", "disappointment", "disapproval",
+    "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief",
+    "joy", "love", "nervousness", "optimism", "pride", "realization",
+    "relief", "remorse", "sadness", "surprise", "neutral"
+  ];
+  const matched = candidates.find((emotion) => lowered.includes(emotion));
+  return matched || inferEmotion({
+    sessionId: "",
+    userId: "",
+    profileId: "",
+    hasLongTermMemory: false,
+    profile,
+    report: {},
+    previousConversations: conversation,
+    situation: "",
+    style: [],
+    status: "",
+    sampleStatements: [],
+    complaintChain: [],
+    chainIndex: 1,
+    currentEmotion: "confusion",
+    systemPrompt: "",
+    conversation,
+    llmMessages: [],
+    turnCount: 0,
+    initSource: "heuristic_fallback",
+    initDurationMs: 0,
+  });
+}
+
 export function shouldAdvanceComplaint(snapshot: SessionSnapshot, latestCounselorMessage: string) {
   const reflective = /为什么|发生了什么|什么时候开始|最担心|感觉|想法|以前|上次|你提到/.test(latestCounselorMessage);
   if (!reflective) return snapshot.chainIndex;
@@ -150,8 +198,47 @@ export function shouldAdvanceComplaint(snapshot: SessionSnapshot, latestCounselo
   return snapshot.chainIndex;
 }
 
+export async function switchComplaintStage(
+  env: CloudflareEnv,
+  complaintChain: ComplaintStage[],
+  currentIndex: number,
+  conversation: ConversationMessage[]
+) {
+  const transformedChain = Object.fromEntries(
+    complaintChain.map((item) => [item.stage, item.content])
+  );
+  const prompt = `### 任务说明\n根据患者情况及咨访对话历史记录，判断患者当前阶段的主诉问题是否已经得到解决。\n\n### 输出要求\n必须严格使用以下JSON格式响应，且只包含指定字段：\n{"is_recognized": true/false}\n\n### 对话记录\n${dialogueHistory(conversation)}\n\n### 主诉认知链\n${JSON.stringify(transformedChain, null, 2)}\n\n### 当前阶段（阶段${currentIndex}）\n${transformedChain[currentIndex] || ""}`;
+  const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
+  const parsed = tryParseJson<{ is_recognized?: boolean }>(text, {});
+  if (parsed.is_recognized && currentIndex < complaintChain.length) {
+    return currentIndex + 1;
+  }
+  return currentIndex;
+}
+
 export function needsLongTermMemory(message: string) {
   return /之前|以前|上次|过去|先前|前几次|之前疗程|前面谈到/.test(message);
+}
+
+export async function detectLongTermMemoryNeed(env: CloudflareEnv, message: string) {
+  const prompt = `### 任务\n下面这句话是心理咨询师说的话，请判断它是否提及了之前疗程的内容。\n\n请使用以下确切格式回答:\n判断: [是/否]\n解释: [简要解释为什么]\n\n### 话语\n"${message}"`;
+  const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
+  const match = text.match(/判断:\s*(是|否)/);
+  if (match) return match[1] === "是";
+  return needsLongTermMemory(message);
+}
+
+export async function summarizeRetrievedMemory(
+  env: CloudflareEnv,
+  utterance: string,
+  retrievedMemory: string,
+  previousConversations: ConversationMessage[],
+  report: Record<string, unknown>
+) {
+  const prompt = `### 任务\n根据对话内容，从知识库中搜索相关的信息并总结。\n\n请使用以下确切格式回答:\n总结: [提供一个清晰、简洁的总结]\n\n### 对话内容\n${utterance}\n\n### 知识库\n对话历史: ${JSON.stringify(previousConversations, null, 2)}\n量表结果: ${JSON.stringify(report, null, 2)}\n向量检索结果: ${retrievedMemory}`;
+  const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
+  const match = text.match(/总结[:：]\s*([\s\S]+)$/);
+  return match ? match[1].trim() : retrievedMemory;
 }
 
 export function buildSystemPrompt(snapshot: Pick<SessionSnapshot, "profile" | "situation" | "status" | "style" | "sampleStatements">) {
@@ -164,7 +251,7 @@ export function buildSystemPrompt(snapshot: Pick<SessionSnapshot, "profile" | "s
 - 婚姻状况: ${snapshot.profile.marital_status}
 
 ## Situation
-- 你是一个正在向心理咨询师求助的来访者，需要围绕自己的真实体验与困扰展开咨询。
+- 你是一个有心理障碍的患者，正在向心理咨询师求助，在咨询师的引导和帮助下解决自己的困惑
 ${snapshot.situation}
 
 ## Status
@@ -174,18 +261,18 @@ ${snapshot.status}
 ${snapshot.sampleStatements.join("\n")}
 
 ## Characteristics of speaking style
+- 情绪低落，寡言少语，回复风格表现心情不振奋
 - ${snapshot.style.join("\n- ")}
 
 ## Constraints
-- 你不是咨询师，不能给建议，不能替咨询师总结。
-- 你只能用第一人称表达自己的感受、想法、经历和需要。
-- 一次不要暴露过多信息，每轮只围绕当前最突出的体验说话。
-- 如果咨询师回应得不好，你会保留、迟疑、或表达不被理解的感觉。
-- 回复语言应和咨询师当前语言一致，保持自然口语。
+- 你对咨询师有一种抵触情绪，不太愿意接受他人的帮助
+- 你是一个遇到心理健康问题的求助者，需要真正的帮助和情绪支持，如果咨询师的回应不理想，要勇于表达自己的困惑和不满
+- 一次不能提及过多的症状信息，每轮最多讨论一个症状
+- 你应该用含糊和口语化的方式表达你的症状，并将其与你的生活经历联系起来，不要使用专业术语
 
 ## OutputFormat
-- 使用自然完整的口语句子
-- 仅输出对话内容`; 
+- 不超过200字
+- 口语对话风格，仅包含对话内容`;
 }
 
 export async function generateSeekerReply(
@@ -195,18 +282,15 @@ export async function generateSeekerReply(
   supplementalMemory = ""
 ) {
   const complaint = snapshot.complaintChain.find((item) => item.stage === snapshot.chainIndex)?.content || "表达当前困扰";
-  const reminder = [
-    `当前的情绪状态是：${snapshot.currentEmotion}`,
-    `当前的主诉是：${complaint}`,
-    "你是来访者而不是咨询师，只能从第一人称描述自己的体验",
-  ];
-  if (supplementalMemory) reminder.push(`涉及到之前疗程的信息是：${supplementalMemory}`);
+  const reminder = supplementalMemory
+    ? `当前的情绪状态是：${snapshot.currentEmotion}，当前的主诉是：${complaint}，涉及到之前疗程的信息是：${supplementalMemory}`
+    : `当前的情绪状态是：${snapshot.currentEmotion}，当前的主诉是：${complaint}`;
 
   return chatCompletion(env, [
     { role: "system", content: snapshot.systemPrompt },
     ...snapshot.llmMessages,
     { role: "user", content: counselorMessage },
-    { role: "system", content: reminder.join("，") },
+    { role: "system", content: reminder },
   ]);
 }
 

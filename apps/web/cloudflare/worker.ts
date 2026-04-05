@@ -5,8 +5,7 @@ import { getAuthUserId, hashPassword, signJwt, verifyPassword } from "./auth";
 import { DIFFICULTY_LEVELS, EVALUATION_DIMENSIONS, GROUP_OPTIONS, ISSUE_OPTIONS, SCHOOL_OPTIONS } from "./constants";
 import { indexLongTermMemory } from "./memory";
 import { chatWithSnapshot, createInitialSnapshot } from "./session-engine";
-import { evaluateSession } from "./simulator";
-import { inferEmotion } from "./simulator";
+import { buildSystemPrompt, evaluateSession, inferEmotion } from "./simulator";
 import type { CloudflareEnv, ProfileView, SeekerProfileCacheRecord, SeekerProfileRecord, SessionSnapshot } from "./types";
 import { buildSqlFilters, corsHeaders, errorResponse, jsonResponse, jsonText, nowIso, readForm, readJson, safeJsonParse } from "./utils";
 
@@ -60,7 +59,7 @@ function snapshotFromCache(
     complaintChain: safeJsonParse(cache.complaint_chain, []),
     chainIndex: 1,
     currentEmotion: cache.current_emotion || "confusion",
-    systemPrompt: cache.system_prompt,
+    systemPrompt: "",
     conversation: [],
     llmMessages: [],
     turnCount: 0,
@@ -68,9 +67,7 @@ function snapshotFromCache(
     initDurationMs: 0,
   };
   snapshot.currentEmotion = inferEmotion(snapshot);
-  if (!snapshot.systemPrompt || !snapshot.systemPrompt.includes("## Example of statement")) {
-    snapshot.systemPrompt = buildSystemPrompt(snapshot);
-  }
+  snapshot.systemPrompt = buildSystemPrompt(snapshot);
   return snapshot;
 }
 
@@ -144,22 +141,35 @@ async function startSession(request: Request, env: CloudflareEnv) {
 
   if (hasLongTermMemory) {
     if (!sessionGroupId) {
-      sessionGroupId = crypto.randomUUID();
-      await env.DB
+      const existingGroup = await env.DB
         .prepare(
-          `INSERT INTO session_groups (id, user_id, profile_id, title, description, session_count, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 0, 'active', ?, ?)`
+          `SELECT id FROM session_groups
+           WHERE user_id = ? AND profile_id = ? AND status = 'active'
+           ORDER BY updated_at DESC LIMIT 1`
         )
-        .bind(
-          sessionGroupId,
-          userId,
-          profile.id,
-          `与${profile.gender}${profile.age}岁${profile.occupation}的咨询`,
-          "长期记忆咨询组",
-          nowIso(),
-          nowIso()
-        )
-        .run();
+        .bind(userId, profile.id)
+        .first<{ id: string }>();
+
+      if (existingGroup?.id) {
+        sessionGroupId = existingGroup.id;
+      } else {
+        sessionGroupId = crypto.randomUUID();
+        await env.DB
+          .prepare(
+            `INSERT INTO session_groups (id, user_id, profile_id, title, description, session_count, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 0, 'active', ?, ?)`
+          )
+          .bind(
+            sessionGroupId,
+            userId,
+            profile.id,
+            `与${profile.gender}${profile.age}岁${profile.occupation}的咨询`,
+            "长期记忆咨询组",
+            nowIso(),
+            nowIso()
+          )
+          .run();
+      }
     }
     const countRow = await env.DB
       .prepare(`SELECT COUNT(*) AS total FROM counseling_sessions WHERE user_id = ? AND profile_id = ? AND session_group_id = ?`)
@@ -385,6 +395,7 @@ async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId:
   return jsonResponse({
     id: session.id,
     profile_id: session.profile_id,
+    session_group_id: session.session_group_id,
     messages: safeJsonParse(session.messages, []),
     status: session.status,
     evaluation: safeJsonParse(session.evaluation, null),
@@ -396,21 +407,30 @@ async function listSessions(request: Request, env: CloudflareEnv) {
   const userId = await requireUser(request, env);
   if (!userId) return errorResponse("Unauthorized", 401);
 
+  const url = new URL(request.url);
+  const groupId = url.searchParams.get("group_id") || "";
+  const status = url.searchParams.get("status") || "";
+  const filters = buildSqlFilters([
+    ["s.session_group_id = ?", groupId],
+    ["s.status = ?", status],
+  ]);
+
   const rows = await env.DB
     .prepare(
       `SELECT s.*, p.gender, p.age, p.occupation, p.marital_status
        FROM counseling_sessions s
        JOIN seeker_profiles p ON p.id = s.profile_id
-       WHERE s.user_id = ?
+       WHERE s.user_id = ?${filters.clause}
        ORDER BY s.started_at DESC`
     )
-    .bind(userId)
+    .bind(userId, ...filters.values)
     .all<any>();
 
   return jsonResponse(
     (rows.results || []).map((row) => ({
       id: row.id,
       profile_id: row.profile_id,
+      session_group_id: row.session_group_id,
       status: row.status,
       started_at: row.started_at,
       ended_at: row.ended_at,
@@ -426,10 +446,34 @@ async function listSessionGroups(request: Request, env: CloudflareEnv) {
   const userId = await requireUser(request, env);
   if (!userId) return errorResponse("Unauthorized", 401);
   const rows = await env.DB
-    .prepare(`SELECT * FROM session_groups WHERE user_id = ? ORDER BY updated_at DESC`)
+    .prepare(
+      `SELECT g.*, p.gender, p.age, p.occupation, p.marital_status,
+              MAX(s.started_at) AS last_started_at,
+              SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions,
+              SUM(CASE WHEN s.status = 'active' THEN 1 ELSE 0 END) AS active_sessions
+       FROM session_groups g
+       JOIN seeker_profiles p ON p.id = g.profile_id
+       LEFT JOIN counseling_sessions s ON s.session_group_id = g.id
+       WHERE g.user_id = ?
+       GROUP BY g.id
+       ORDER BY g.updated_at DESC`
+    )
     .bind(userId)
     .all<any>();
-  return jsonResponse(rows.results || []);
+  return jsonResponse(
+    (rows.results || []).map((row) => ({
+      id: row.id,
+      profile_id: row.profile_id,
+      title: row.title,
+      description: row.description,
+      session_count: Number(row.session_count || 0),
+      status: row.status,
+      profile_summary: `${row.gender}，${row.age}岁，${row.occupation}，${row.marital_status}`,
+      last_started_at: row.last_started_at,
+      completed_sessions: Number(row.completed_sessions || 0),
+      active_sessions: Number(row.active_sessions || 0),
+    }))
+  );
 }
 
 async function register(request: Request, env: CloudflareEnv) {

@@ -33,6 +33,7 @@ export default function ChatPage() {
   const [turnCount, setTurnCount] = useState(0);
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [sessionGroupId, setSessionGroupId] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<Record<string, string> | null>(
     null
   );
@@ -69,6 +70,7 @@ export default function ChatPage() {
           const cCount = formattedMsgs.filter((m) => m.role === "client").length;
           setTurnCount(cCount);
         }
+        setSessionGroupId(data.session_group_id ?? null);
         if (data.status === "completed") {
           setSessionEnded(true);
           const ev = data.evaluation as Record<string, string> | undefined;
@@ -289,6 +291,19 @@ export default function ChatPage() {
                   onClick={() => router.push("/simulator")}
                 >
                   再练一次
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    router.push(
+                      sessionGroupId
+                        ? `/simulator?tab=sessions&groupId=${encodeURIComponent(sessionGroupId)}`
+                        : "/simulator?tab=sessions"
+                    )
+                  }
+                >
+                  查看历史记录
                 </Button>
                 <Button
                   size="sm"

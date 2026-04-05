@@ -157,6 +157,7 @@ export const simulator = {
     return request<{
       id: string;
       profile_id: string;
+      session_group_id?: string;
       messages: Array<{ role: string; content: string }>;
       status: string;
       evaluation?: Record<string, unknown>;
@@ -168,10 +169,15 @@ export const simulator = {
     return request<SessionGroup[]>("/api/v1/simulator/session-groups");
   },
 
-  getSessions() {
+  getSessions(params?: { group_id?: string; status?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.group_id) qs.set("group_id", params.group_id);
+    if (params?.status) qs.set("status", params.status);
+    const q = qs.toString();
     return request<Array<{
       id: string;
       profile_id: string;
+      session_group_id?: string;
       status: string;
       started_at: string;
       ended_at?: string;
@@ -179,7 +185,7 @@ export const simulator = {
       score?: number;
       turn_count: number;
       profile_summary: string;
-    }>>("/api/v1/simulator/sessions");
+    }>>(`/api/v1/simulator/sessions${q ? `?${q}` : ""}`);
   },
 };
 

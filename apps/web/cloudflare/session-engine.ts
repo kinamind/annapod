@@ -1,11 +1,13 @@
 import { queryLongTermMemory } from "./memory";
 import {
   buildSystemPrompt,
+  detectLongTermMemoryNeed,
+  emotionModulation,
   generateSeekerReply,
   inferEmotion,
   initializeProfileState,
-  needsLongTermMemory,
-  shouldAdvanceComplaint,
+  summarizeRetrievedMemory,
+  switchComplaintStage,
 } from "./simulator";
 import type { CloudflareEnv, ConversationMessage, SessionSnapshot } from "./types";
 
@@ -44,7 +46,7 @@ export async function createInitialSnapshot(env: CloudflareEnv, input: {
     complaintChain: initialized.complaintChain,
     chainIndex: 1,
     currentEmotion: initialized.currentEmotion,
-    systemPrompt: initialized.systemPrompt || "",
+    systemPrompt: "",
     conversation: [],
     llmMessages: [],
     turnCount: 0,
@@ -52,10 +54,8 @@ export async function createInitialSnapshot(env: CloudflareEnv, input: {
     initDurationMs: 0,
   };
 
-  snapshot.currentEmotion = inferEmotion(snapshot);
-  if (!snapshot.systemPrompt || !snapshot.systemPrompt.includes("## Example of statement")) {
-    snapshot.systemPrompt = buildSystemPrompt(snapshot);
-  }
+  snapshot.currentEmotion = snapshot.currentEmotion || inferEmotion(snapshot);
+  snapshot.systemPrompt = buildSystemPrompt(snapshot);
   snapshot.initDurationMs = Date.now() - start;
   return snapshot;
 }
@@ -73,17 +73,35 @@ export async function chatWithSnapshot(
   };
 
   nextSnapshot.conversation.push({ role: "Counselor", content: counselorMessage });
-  nextSnapshot.chainIndex = shouldAdvanceComplaint(nextSnapshot, counselorMessage);
-  nextSnapshot.currentEmotion = inferEmotion(nextSnapshot);
+  nextSnapshot.currentEmotion = await emotionModulation(
+    env,
+    nextSnapshot.profile,
+    nextSnapshot.conversation
+  );
+  nextSnapshot.chainIndex = await switchComplaintStage(
+    env,
+    nextSnapshot.complaintChain,
+    nextSnapshot.chainIndex,
+    nextSnapshot.conversation
+  );
 
   let supplementalMemory = "";
-  if (nextSnapshot.hasLongTermMemory && needsLongTermMemory(counselorMessage)) {
-    supplementalMemory = await queryLongTermMemory(
+  if (nextSnapshot.hasLongTermMemory && await detectLongTermMemoryNeed(env, counselorMessage)) {
+    const retrievedMemory = await queryLongTermMemory(
       env,
       nextSnapshot.userId,
       nextSnapshot.profileId,
       counselorMessage
     );
+    supplementalMemory = retrievedMemory
+      ? await summarizeRetrievedMemory(
+          env,
+          counselorMessage,
+          retrievedMemory,
+          nextSnapshot.previousConversations,
+          nextSnapshot.report
+        )
+      : "";
   }
 
   const seekerReply = await generateSeekerReply(

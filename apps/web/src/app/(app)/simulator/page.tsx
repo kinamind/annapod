@@ -23,9 +23,9 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import type { SeekerProfile } from "@/lib/types";
+import type { SeekerProfile, SessionGroup } from "@/lib/types";
 import { useLocale } from "@/lib/locale";
 
 const GROUP_TAGS = [
@@ -121,13 +121,13 @@ function ProfileCard({
   );
 }
 
-function UserSessionsList() {
+function UserSessionsList({ groupId }: { groupId?: string }) {
   const { t } = useLocale();
   const router = useRouter();
 
   const { data: sessions, isLoading, isError } = useQuery({
-    queryKey: ["my-sessions"],
-    queryFn: () => simulator.getSessions(),
+    queryKey: ["my-sessions", groupId],
+    queryFn: () => simulator.getSessions({ group_id: groupId || undefined }),
   });
 
   if (isLoading) {
@@ -148,7 +148,10 @@ function UserSessionsList() {
   }
 
   return (
-    <div className="space-y-4">
+      <div className="space-y-4">
+      {groupId && (
+        <div className="text-sm text-muted-foreground">当前正在查看同一长期记忆分组下的历史会话。</div>
+      )}
       {sessions.map((ses) => (
         <Card key={ses.id} className="hover:shadow-md transition">
           <CardContent className="p-4 flex items-center justify-between">
@@ -186,14 +189,90 @@ function UserSessionsList() {
   );
 }
 
+function SessionGroupsList() {
+  const { t } = useLocale();
+  const router = useRouter();
+  const [startingGroupId, setStartingGroupId] = useState<string | null>(null);
+
+  const { data: groups, isLoading, isError } = useQuery({
+    queryKey: ["session-groups"],
+    queryFn: () => simulator.getSessionGroups(),
+  });
+
+  const handleContinue = async (group: SessionGroup) => {
+    setStartingGroupId(group.id);
+    try {
+      const res = await simulator.startSession({
+        profile_id: group.profile_id,
+        session_group_id: group.id,
+        enable_long_term_memory: true,
+      });
+      router.push(`/simulator/chat?sessionId=${encodeURIComponent(res.session_id)}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "创建长期记忆会话失败");
+      setStartingGroupId(null);
+    }
+  };
+
+  if (isLoading) {
+    return <div className="py-20 text-center text-muted-foreground">{t("simulator.loading") || "Loading..."}</div>;
+  }
+
+  if (isError) {
+    return <div className="py-20 text-center text-red-500">Failed to load session groups.</div>;
+  }
+
+  if (!groups || groups.length === 0) {
+    return (
+      <div className="py-20 text-center text-muted-foreground flex flex-col items-center">
+        <Brain className="h-10 w-10 mb-3 opacity-50" />
+        <p>还没有长期记忆会话分组。</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <Card key={group.id} className="hover:shadow-md transition">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="space-y-1 min-w-0">
+              <div className="font-medium">{group.title}</div>
+              <div className="text-sm text-muted-foreground">{group.profile_summary}</div>
+              <div className="text-xs text-muted-foreground flex gap-4 flex-wrap">
+                <span>会话数: {group.session_count}</span>
+                <span>已完成: {group.completed_sessions ?? 0}</span>
+                {group.last_started_at && <span>最近一次: {new Date(group.last_started_at).toLocaleString()}</span>}
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button variant="outline" onClick={() => router.push(`/simulator?tab=sessions&groupId=${encodeURIComponent(group.id)}`)}>
+                <History className="h-4 w-4 mr-2" />
+                记录
+              </Button>
+              <Button onClick={() => handleContinue(group)} disabled={startingGroupId === group.id}>
+                <PlaySquare className="h-4 w-4 mr-2" />
+                {startingGroupId === group.id ? "创建中..." : "继续咨询"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function SimulatorPage() {
   const { locale, t } = useLocale();
+  const searchParams = useSearchParams();
   const [groupTag, setGroupTag] = useState("");
   const [difficulty, setDifficulty] = useState("");
   const [page, setPage] = useState(1);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [enableLtm, setEnableLtm] = useState(true);
   const router = useRouter();
+  const activeTab = searchParams.get("tab") || "profiles";
+  const selectedGroupId = searchParams.get("groupId") || "";
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["profiles", groupTag, difficulty, page],
@@ -240,10 +319,11 @@ export default function SimulatorPage() {
         <p className="text-muted-foreground">{t("simulator.subtitle")}</p>
       </div>
 
-      <Tabs defaultValue="profiles" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+      <Tabs value={activeTab} onValueChange={(value) => router.replace(value === "sessions" && selectedGroupId ? `/simulator?tab=${value}&groupId=${encodeURIComponent(selectedGroupId)}` : `/simulator?tab=${value}`)} className="w-full">
+        <TabsList className="grid w-full max-w-xl grid-cols-3 mb-6">
           <TabsTrigger value="profiles">{locale === "zh" ? "选择来访者" : "Profiles"}</TabsTrigger>
-          <TabsTrigger value="sessions">{locale === "zh" ? "我的咨询记录" : "My Sessions"}</TabsTrigger>
+          <TabsTrigger value="groups">{locale === "zh" ? "长期记忆分组" : "Memory Groups"}</TabsTrigger>
+          <TabsTrigger value="sessions">{locale === "zh" ? "咨询记录" : "Sessions"}</TabsTrigger>
         </TabsList>
         <TabsContent value="profiles" className="space-y-6">
       {/* Filters */}
@@ -355,8 +435,11 @@ export default function SimulatorPage() {
         </>
       )}
         </TabsContent>
+        <TabsContent value="groups">
+          <SessionGroupsList />
+        </TabsContent>
         <TabsContent value="sessions">
-          <UserSessionsList />
+          <UserSessionsList groupId={selectedGroupId || undefined} />
         </TabsContent>
       </Tabs>
     </div>
