@@ -189,7 +189,7 @@ async function startSession(request: Request, env: CloudflareEnv) {
     previousConversations: profile.conversation,
   };
 
-  const cache = await env.DB
+  const cacheRows = await env.DB
     .prepare(
       `SELECT * FROM seeker_profile_caches
        WHERE profile_id = ? AND has_long_term_memory = ?
@@ -197,7 +197,8 @@ async function startSession(request: Request, env: CloudflareEnv) {
        LIMIT 1`
     )
     .bind(profile.id, hasLongTermMemory ? 1 : 0)
-    .first<SeekerProfileCacheRecord>();
+    .all<SeekerProfileCacheRecord>();
+  const cache = (cacheRows.results || [])[0] || null;
 
   let snapshot: SessionSnapshot;
   if (cache) {
