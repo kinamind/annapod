@@ -9,7 +9,7 @@
     "lint": "eslint",
     "pages:preview": "pnpm build && wrangler pages dev out",
     "cf:bootstrap:db": "wrangler d1 create annapod",
-    "cf:bootstrap:vector": "wrangler vectorize create annapod-memory --dimensions=1536 --metric=cosine",
+    "cf:bootstrap:vector": "sh -c 'wrangler vectorize info annapod-memory >/dev/null 2>&1 || wrangler vectorize create annapod-memory --dimensions=1536 --metric=cosine'",
     "cf:migrate:local": "wrangler d1 migrations apply annapod --local --config wrangler.jsonc",
     "cf:migrate:remote": "wrangler d1 migrations apply annapod --remote --config wrangler.jsonc",
     "cf:deploy": "pnpm build && wrangler pages deploy out --project-name annapod --config wrangler.jsonc"

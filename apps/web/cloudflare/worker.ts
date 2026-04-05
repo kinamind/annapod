@@ -697,10 +697,18 @@ export default {
   async fetch(request: Request, env: CloudflareEnv) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
-      const response = await handleApi(request, env);
-      const headers = new Headers(response.headers);
-      Object.entries(corsHeaders(request, env)).forEach(([key, value]) => headers.set(key, value));
-      return new Response(response.body, { status: response.status, headers });
+      try {
+        const response = await handleApi(request, env);
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders(request, env)).forEach(([key, value]) => headers.set(key, value));
+        return new Response(response.body, { status: response.status, headers });
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : "Internal server error";
+        const response = errorResponse(detail, 500);
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders(request, env)).forEach(([key, value]) => headers.set(key, value));
+        return new Response(response.body, { status: response.status, headers });
+      }
     }
     return env.ASSETS.fetch(request);
   },

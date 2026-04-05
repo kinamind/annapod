@@ -2,6 +2,14 @@ import type { CloudflareEnv } from "./types";
 
 const encoder = new TextEncoder();
 
+function getJwtSecret(env: CloudflareEnv) {
+  const secret = env.JWT_SECRET?.trim();
+  if (!secret) {
+    throw new Error("Missing Pages secret: JWT_SECRET");
+  }
+  return secret;
+}
+
 function bytesToBase64Url(bytes: Uint8Array) {
   const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -63,14 +71,14 @@ export async function signJwt(env: CloudflareEnv, payload: Record<string, unknow
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
     })
   );
-  const signature = await hmacSign(env.JWT_SECRET, `${header}.${body}`);
+  const signature = await hmacSign(getJwtSecret(env), `${header}.${body}`);
   return `${header}.${body}.${signature}`;
 }
 
 export async function verifyJwt(env: CloudflareEnv, token: string) {
   const [header, payload, signature] = token.split(".");
   if (!header || !payload || !signature) return null;
-  const expected = await hmacSign(env.JWT_SECRET, `${header}.${payload}`);
+  const expected = await hmacSign(getJwtSecret(env), `${header}.${payload}`);
   if (expected !== signature) return null;
 
   try {

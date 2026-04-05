@@ -60,20 +60,23 @@ pnpm cf:migrate:remote
 - `pnpm cf:bootstrap:db` 会返回 D1 数据库 UUID，请把它填入 `wrangler.jsonc` 的 `database_id`
 - `pnpm cf:bootstrap:vector` 会创建名为 `annapod-memory` 的 Vectorize index，维度为 `1536`
 
-## GitHub 自动部署
+## Git 集成部署
 
-仓库已补充 `.github/workflows/cloudflare-pages-deploy.yml`，推送到 `main` 后会自动：
+当前推荐方式是直接使用 Cloudflare Dashboard 的 Git 集成：
 
-1. 安装依赖
-2. `lint`
-3. 构建 `out/` 与 `out/_worker.js`
-4. 同步 Pages secrets
-5. 执行 D1 migrations
-6. 发布到 Cloudflare Pages
+1. 在 Cloudflare Pages 中连接 GitHub 仓库 `kinamind/annapod`
+2. 每次 push 到 `main` 后由 Cloudflare 自动构建和发布
+3. 运行时密钥统一配置在 Pages 项目的 `Settings -> Variables and Secrets`
 
-需要在 GitHub 仓库 Secrets 中配置：
+至少需要配置：
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
 - `AI_API_KEY`
 - `JWT_SECRET`
+
+建议同时确认这些普通环境变量：
+
+- `AI_BASE_URL=https://api.openai.com/v1`
+- `AI_MODEL=gpt-5-nano`
+- `EMBEDDING_PROVIDER=openai_compatible`
+- `EMBEDDING_BASE_URL=https://api.openai.com/v1`
+- `EMBEDDING_MODEL=text-embedding-3-small`

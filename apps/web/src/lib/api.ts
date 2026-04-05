@@ -58,8 +58,15 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail || res.statusText);
+    const fallbackText = await res.text().catch(() => "");
+    let detail = res.statusText;
+    try {
+      const body = fallbackText ? (JSON.parse(fallbackText) as { detail?: string }) : null;
+      detail = body?.detail || fallbackText || res.statusText;
+    } catch {
+      detail = fallbackText || res.statusText;
+    }
+    throw new ApiError(res.status, detail);
   }
 
   if (res.status === 204) return undefined as T;

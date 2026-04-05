@@ -33,19 +33,10 @@ EMBEDDING_MODEL=text-embedding-3-small
 JWT_SECRET=replace-this-with-a-long-random-secret
 ```
 
+如果项目是通过 Cloudflare Dashboard 直接连接 GitHub 仓库部署，这些值需要配置在 Pages 项目的 `Variables and Secrets` 中；GitHub repository secrets 不会自动注入到 Pages 运行时。
+
 5. 应用 D1 migrations
-6. 再通过 Pages 连接 GitHub 自动部署
-
-仓库内已提供 GitHub Actions 自动部署工作流：
-
-- `.github/workflows/cloudflare-pages-deploy.yml`
-
-它会在 `main` 分支 push 后自动完成：
-
-- `pnpm build`
-- Pages secrets 同步
-- D1 migrations apply
-- `wrangler pages deploy`
+6. 在 Cloudflare Pages 中直接连接 GitHub 仓库，使用原生 Git 集成自动部署
 
 ## 迁移边界
 
