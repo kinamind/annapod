@@ -17,8 +17,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.preview.desc": "即将推出",
     "nav.profile": "个人中心",
     "nav.soon": "即将",
-    "app.name": "MindBridge",
-    "app.subtitle": "心桥 · 咨询师训练",
+    "app.name": "annapod",
+    "app.subtitle": "安心舱 · 咨询师训练",
     "common.loading": "加载中…",
     "theme.light": "浅色",
     "theme.dark": "深色",
@@ -96,8 +96,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "dashboard.viewGrowth": "查看成长曲线",
     "dashboard.recommendations": "学习推荐",
 
-    "auth.login.title": "登录 MindBridge",
-    "auth.login.subtitle": "心桥 · AI 咨询师训练平台",
+    "auth.login.title": "登录 annapod",
+    "auth.login.subtitle": "安娜心训舱 · AI 咨询师训练平台",
     "auth.login.user": "用户名或邮箱",
     "auth.login.userPlaceholder": "输入用户名或邮箱",
     "auth.login.password": "密码",
@@ -109,7 +109,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "auth.login.success": "登录成功！",
     "auth.login.failed": "登录失败",
 
-    "auth.register.title": "注册 MindBridge",
+    "auth.register.title": "注册 annapod",
     "auth.register.subtitle": "创建帐号，开始您的咨询训练之旅",
     "auth.register.email": "邮箱",
     "auth.register.username": "用户名",
@@ -124,7 +124,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "auth.register.hasAccount": "已有帐号？",
     "auth.register.toLogin": "立即登录",
     "auth.register.passwordMismatch": "两次密码不一致",
-    "auth.register.success": "注册成功！欢迎使用 MindBridge",
+    "auth.register.success": "注册成功！欢迎使用安娜心训舱",
     "auth.register.failed": "注册失败",
   },
   en: {
@@ -139,8 +139,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.preview.desc": "Coming soon",
     "nav.profile": "Profile",
     "nav.soon": "Soon",
-    "app.name": "MindBridge",
-    "app.subtitle": "AI Counselor Training",
+    "app.name": "annapod",
+    "app.subtitle": "Annapod Counselor Training",
     "common.loading": "Loading…",
     "theme.light": "Light",
     "theme.dark": "Dark",
@@ -218,8 +218,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "dashboard.viewGrowth": "View Growth Curve",
     "dashboard.recommendations": "Learning Recommendations",
 
-    "auth.login.title": "Sign in to MindBridge",
-    "auth.login.subtitle": "MindBridge · AI Counselor Training Platform",
+    "auth.login.title": "Sign in to annapod",
+    "auth.login.subtitle": "annapod · AI Counselor Training Platform",
     "auth.login.user": "Username or Email",
     "auth.login.userPlaceholder": "Enter username or email",
     "auth.login.password": "Password",
@@ -231,7 +231,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "auth.login.success": "Login successful!",
     "auth.login.failed": "Login failed",
 
-    "auth.register.title": "Create MindBridge account",
+    "auth.register.title": "Create annapod account",
     "auth.register.subtitle": "Sign up and start your counselor training journey",
     "auth.register.email": "Email",
     "auth.register.username": "Username",
@@ -246,7 +246,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "auth.register.hasAccount": "Already have an account?",
     "auth.register.toLogin": "Sign in now",
     "auth.register.passwordMismatch": "Passwords do not match",
-    "auth.register.success": "Registration successful! Welcome to MindBridge",
+    "auth.register.success": "Registration successful! Welcome to annapod",
     "auth.register.failed": "Registration failed",
   },
 };
@@ -266,14 +266,14 @@ const LocaleContext = createContext<LocaleContextValue>({
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("mindbridge_locale") as Locale) || "zh";
+      return (localStorage.getItem("annapod_locale") as Locale) || "zh";
     }
     return "zh";
   });
 
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
-    localStorage.setItem("mindbridge_locale", l);
+    localStorage.setItem("annapod_locale", l);
   }, []);
 
   const t = useCallback(

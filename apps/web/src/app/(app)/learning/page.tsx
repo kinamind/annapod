@@ -160,7 +160,7 @@ export default function LearningPage() {
                           })}
                         </span>
                         <Progress
-                          value={pt.score * 10}
+                          value={pt.score}
                           className="flex-1 h-3"
                         />
                         <span className="text-sm font-medium w-10 text-right">
@@ -186,9 +186,9 @@ export default function LearningPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {stats.weak_dimensions.map((d) => (
-                      <Badge key={d} variant="destructive" className="text-xs">
-                        {EVAL_DIMENSIONS[d] ?? d}
+                    {stats.weak_dimensions.map((item) => (
+                      <Badge key={item.dim} variant="destructive" className="text-xs">
+                        {EVAL_DIMENSIONS[item.dim] ?? item.dim}
                       </Badge>
                     ))}
                   </div>
@@ -210,7 +210,7 @@ export default function LearningPage() {
                 {Object.entries(stats.dimension_averages).map(
                   ([key, value]) => {
                     const score = value as number;
-                    const isWeak = stats.weak_dimensions.includes(key);
+                    const isWeak = stats.weak_dimensions.some((item) => item.dim === key);
                     return (
                       <div key={key} className="space-y-1.5">
                         <div className="flex items-center justify-between text-sm">
@@ -226,10 +226,10 @@ export default function LearningPage() {
                             )}
                           </span>
                           <span className="font-medium">
-                            {score.toFixed(1)} / 10
+                            {score.toFixed(1)} / 100
                           </span>
                         </div>
-                        <Progress value={score * 10} className="h-2.5" />
+                        <Progress value={score} className="h-2.5" />
                       </div>
                     );
                   }

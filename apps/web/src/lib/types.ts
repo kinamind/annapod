@@ -1,4 +1,4 @@
-/* MindBridge - Frontend Type Definitions */
+/* annapod - Frontend Type Definitions */
 
 // ─── Auth ────────────────────────────────────────
 export interface User {
@@ -143,8 +143,8 @@ export interface Dashboard {
   dimension_averages: Record<string, number>;
   recent_scores: { session_id: string; score: number; date: string }[];
   growth_curve: { date: string; score: number }[];
-  weak_dimensions: string[];
-  common_mistakes: string[];
+  weak_dimensions: { dim: string; avg: number }[];
+  common_mistakes: { type: string; count: number }[];
   recommendations: Recommendation[];
 }
 

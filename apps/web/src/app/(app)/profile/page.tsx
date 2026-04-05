@@ -74,7 +74,7 @@ export default function ProfilePage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4 mb-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary text-xl font-bold">
-              {user.display_name.charAt(0)}
+              {user.display_name.charAt(0) || "安"}
             </div>
             <div>
               <p className="font-semibold">{user.display_name}</p>

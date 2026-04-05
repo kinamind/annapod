@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# annapod Web
 
-## Getting Started
+annapod（安娜心训舱，简称安心舱）现已采用 Cloudflare Pages 全栈部署形态：
 
-First, run the development server:
+- Next.js 16 静态前端
+- Pages advanced mode Worker
+- D1 `runtime_state` 会话引擎
+- D1 + Vectorize 数据层
+
+## 本地开发
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+默认访问 `http://localhost:3000`。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Cloudflare Pages
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+项目构建后会输出：
 
-## Learn More
+- `out/` 静态页面资源
+- `out/_worker.js` Pages Worker 入口
 
-To learn more about Next.js, take a look at the following resources:
+建议的 Pages 设置：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Root directory: `apps/web`
+- Build command: `pnpm install --frozen-lockfile && pnpm build`
+- Build output directory: `out`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+建议的运行时环境变量：
 
-## Deploy on Vercel
+- `AI_API_KEY`
+- `AI_BASE_URL=https://api.openai.com/v1`
+- `AI_MODEL=gpt-5-nano`
+- `JWT_SECRET=<强随机字符串>`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+如果你把前后端都放在同一个 Pages 项目里，`NEXT_PUBLIC_API_URL` 可以不填，前端会默认走同域 `/api/v1/*`。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+还需要手动完成：
+
+1. 创建 D1 数据库并应用 `cloudflare/migrations/*.sql`
+2. 创建 Vectorize index
+3. 在 `wrangler.jsonc` 中填入真实 binding ID
+
+## 一次性初始化
+
+建议在 `apps/web` 下执行：
+
+```bash
+pnpm cf:bootstrap:db
+pnpm cf:bootstrap:vector
+pnpm cf:migrate:remote
+```
+
+说明：
+
+- `pnpm cf:bootstrap:db` 会返回 D1 数据库 UUID，请把它填入 `wrangler.jsonc` 的 `database_id`
+- `pnpm cf:bootstrap:vector` 会创建名为 `annapod-memory` 的 Vectorize index，维度为 `1536`
+
+## GitHub 自动部署
+
+仓库已补充 `.github/workflows/cloudflare-pages-deploy.yml`，推送到 `main` 后会自动：
+
+1. 安装依赖
+2. `lint`
+3. 构建 `out/` 与 `out/_worker.js`
+4. 同步 Pages secrets
+5. 执行 D1 migrations
+6. 发布到 Cloudflare Pages
+
+需要在 GitHub 仓库 Secrets 中配置：
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `AI_API_KEY`
+- `JWT_SECRET`

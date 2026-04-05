@@ -1,4 +1,4 @@
-"""MindBridge - Database Models: Knowledge Base (3D)."""
+"""annapod - Database Models: Knowledge Base (3D)."""
 
 import uuid
 from datetime import datetime, timezone
@@ -11,34 +11,32 @@ from pgvector.sqlalchemy import Vector
 
 class KnowledgeItem(SQLModel, table=True):
     """三维知识库条目。"""
+
     __tablename__ = "knowledge_items"
-    
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
-    
+
     # 三维标签
     school: str = Field(index=True, max_length=100)  # 流派: CBT, 精神分析, 人本主义, 家庭治疗, etc.
-    issue: str = Field(index=True, max_length=100)   # 症状/议题: 抑郁, 焦虑, 亲密关系, etc.
+    issue: str = Field(index=True, max_length=100)  # 症状/议题: 抑郁, 焦虑, 亲密关系, etc.
     difficulty: str = Field(index=True, max_length=50)  # 难度: beginner / intermediate / advanced
-    
+
     # Content
     title: str = Field(max_length=300)
     content: str = Field(sa_column=Column(Text))
     summary: Optional[str] = Field(default=None, sa_column=Column(Text))
-    
+
     # Source
     source_type: str = Field(max_length=50)  # textbook / paper / guideline / case / technique
     source_ref: Optional[str] = Field(default=None, max_length=500)  # URL or citation
-    
+
     # Tags and extra info
     tags: list = Field(default_factory=list, sa_column=Column(JSON))
     extra_info: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    
+
     # Vector embedding for semantic search
-    embedding: Optional[list[float]] = Field(
-        default=None,
-        sa_column=Column(Vector(768))  # embedding dimension
-    )
-    
+    embedding: Optional[list[float]] = Field(default=None, sa_column=Column(Vector(3072)))
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 

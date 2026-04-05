@@ -1,4 +1,4 @@
-"""MindBridge API - Simulator Router (Virtual Client)."""
+"""annapod API - Simulator Router (Virtual Client)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select, col
@@ -11,11 +11,16 @@ from app.core.security import get_current_user_id
 from app.models.seeker import SeekerProfile, SeekerProfileCache
 from app.models.session import CounselingSession, SessionGroup
 from app.schemas.simulator import (
-    SeekerProfileResponse, SeekerProfileListResponse,
-    StartSessionRequest, StartSessionResponse,
-    ChatRequest, ChatResponse,
-    EndSessionRequest, EndSessionResponse,
-    SessionGroupResponse, SessionListItemResponse,
+    SeekerProfileResponse,
+    SeekerProfileListResponse,
+    StartSessionRequest,
+    StartSessionResponse,
+    ChatRequest,
+    ChatResponse,
+    EndSessionRequest,
+    EndSessionResponse,
+    SessionGroupResponse,
+    SessionListItemResponse,
 )
 from app.modules.simulator.engine import SimulatorEngine
 from app.modules.simulator.profile_manager import ProfileManager
@@ -44,15 +49,16 @@ async def list_profiles(
         stmt = stmt.where(SeekerProfile.group_tag == group_tag)
     if difficulty:
         stmt = stmt.where(SeekerProfile.difficulty == difficulty)
-    
+
     from sqlalchemy import func
+
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
-    
+
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await session.execute(stmt)
     profiles = result.scalars().all()
-    
+
     return SeekerProfileListResponse(
         profiles=[SeekerProfileResponse(**p.__dict__) for p in profiles],
         total=total,
@@ -78,7 +84,7 @@ async def start_session(
     profile = await session.get(SeekerProfile, data.profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="来访者档案不存在")
-    
+
     portrait = {
         "age": profile.age,
         "gender": profile.gender,
@@ -86,14 +92,14 @@ async def start_session(
         "marital_status": profile.marital_status,
         "symptoms": profile.symptoms,
     }
-    
+
     # Handle session group for multi-session mode
     session_group_id = data.session_group_id
     session_number = 1
     # AnnaAgent base context from profile dataset only.
     # Historical user sessions are retrieved via long-term memory vector search during chat.
     previous_conversations = profile.conversation
-    
+
     if data.enable_long_term_memory and session_group_id:
         # Load previous session data from group
         group = await session.get(SessionGroup, session_group_id)
@@ -123,7 +129,7 @@ async def start_session(
         await session.commit()
         await session.refresh(group)
         session_group_id = group.id
-    
+
     # Check for cached initialization
     cache_stmt = select(SeekerProfileCache).where(
         SeekerProfileCache.profile_id == data.profile_id,
@@ -131,7 +137,7 @@ async def start_session(
     )
     cache_result = await session.execute(cache_stmt)
     cache = cache_result.scalars().first()
-    
+
     # Create engine
     engine = SimulatorEngine(
         portrait=portrait,
@@ -141,19 +147,21 @@ async def start_session(
         profile_id=data.profile_id,
         has_long_term_memory=data.enable_long_term_memory,
     )
-    
+
     if cache:
         # Reuse cached initialization
-        engine.load_from_cache({
-            "system_prompt": cache.system_prompt,
-            "complaint_chain": cache.complaint_chain,
-            "style": cache.style,
-            "situation": cache.situation,
-            "status": cache.status,
-            "event": cache.event,
-            "scales": cache.scales,
-            "has_long_term_memory": cache.has_long_term_memory,
-        })
+        engine.load_from_cache(
+            {
+                "system_prompt": cache.system_prompt,
+                "complaint_chain": cache.complaint_chain,
+                "style": cache.style,
+                "situation": cache.situation,
+                "status": cache.status,
+                "event": cache.event,
+                "scales": cache.scales,
+                "has_long_term_memory": cache.has_long_term_memory,
+            }
+        )
         cache.used_count += 1
     else:
         # Initialize from scratch and cache
@@ -173,7 +181,7 @@ async def start_session(
         await session.commit()
         await session.refresh(new_cache)
         cache = new_cache
-    
+
     # Create counseling session record
     cs = CounselingSession(
         user_id=user_id,
@@ -187,16 +195,16 @@ async def start_session(
         group_obj = await session.get(SessionGroup, session_group_id)
         if group_obj:
             group_obj.session_count += 1
-    
+
     session.add(cs)
     await session.commit()
     await session.refresh(cs)
-    
+
     # Store engine in memory
     _active_engines[cs.id] = engine
-    
+
     profile_summary = f"{profile.gender}，{profile.age}岁，{profile.occupation}，{profile.marital_status}"
-    
+
     return StartSessionResponse(
         session_id=cs.id,
         session_group_id=session_group_id,
@@ -217,41 +225,29 @@ async def chat(
     engine = _active_engines.get(data.session_id)
     if not engine:
         raise HTTPException(status_code=404, detail="Session 不存在或已结束，请重新开始")
-    
+
     # Verify session ownership
     cs = await session.get(CounselingSession, data.session_id)
     if not cs or cs.user_id != user_id:
         raise HTTPException(status_code=403, detail="无权访问此 session")
-    
+
     try:
         result = await engine.chat(data.message, db=session)
     except RateLimitError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail="LLM 调用达到速率限制，请稍后重试（约 30-60 秒）。"
-        ) from exc
+        raise HTTPException(status_code=429, detail="LLM 调用达到速率限制，请稍后重试（约 30-60 秒）。") from exc
     except (APIConnectionError, APITimeoutError) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="LLM 服务连接异常，请稍后重试。"
-        ) from exc
+        raise HTTPException(status_code=503, detail="LLM 服务连接异常，请稍后重试。") from exc
     except APIError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="LLM 服务返回异常，请稍后重试。"
-        ) from exc
+        raise HTTPException(status_code=502, detail="LLM 服务返回异常，请稍后重试。") from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="会话生成失败，请重试或重新开始会话。"
-        ) from exc
-    
+        raise HTTPException(status_code=500, detail="会话生成失败，请重试或重新开始会话。") from exc
+
     # Persist conversation state
     cs.messages = engine.messages.copy()
     cs.chain_index = engine.chain_index
     cs.runtime_state = engine.get_state()
     await session.commit()
-    
+
     return ChatResponse(
         session_id=data.session_id,
         response=result["response"],
@@ -271,19 +267,21 @@ async def end_session(
     cs = await session.get(CounselingSession, data.session_id)
     if not cs or cs.user_id != user_id:
         raise HTTPException(status_code=404, detail="Session 不存在")
-    
+
     engine = _active_engines.get(data.session_id)
-    
+
     # Calculate duration
     cs.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
     cs.duration_seconds = int((cs.ended_at - cs.started_at).total_seconds())
     cs.status = "completed"
-    
+
     # Generate evaluation
     if engine and engine.conversation:
         profile = await session.get(SeekerProfile, cs.profile_id)
-        profile_info = f"{profile.gender}，{profile.age}岁，{profile.occupation}，症状：{profile.symptoms}" if profile else ""
-        
+        profile_info = (
+            f"{profile.gender}，{profile.age}岁，{profile.occupation}，症状：{profile.symptoms}" if profile else ""
+        )
+
         evaluation = await evaluate_session(
             conversation=engine.conversation,
             profile_info=profile_info,
@@ -291,9 +289,9 @@ async def end_session(
         )
         cs.evaluation = evaluation
         cs.score = evaluation.get("overall_score", 0)
-    
+
     await session.commit()
-    
+
     # Cleanup engine
     _active_engines.pop(data.session_id, None)
 
@@ -307,7 +305,7 @@ async def end_session(
             messages=cs.messages,
         )
         await session.commit()
-    
+
     return EndSessionResponse(
         session_id=cs.id,
         status=cs.status,
@@ -336,14 +334,11 @@ async def list_session_groups(
     user_id: str = Depends(get_current_user_id),
 ):
     """获取用户的 session 组列表（长期记忆模式）。"""
-    stmt = (
-        select(SessionGroup)
-        .where(SessionGroup.user_id == user_id)
-        .order_by(SessionGroup.updated_at.desc())
-    )
+    stmt = select(SessionGroup).where(SessionGroup.user_id == user_id).order_by(SessionGroup.updated_at.desc())
     result = await session.execute(stmt)
     groups = result.scalars().all()
     return [SessionGroupResponse(**g.__dict__) for g in groups]
+
 
 @router.get("/sessions", response_model=list[SessionListItemResponse])
 async def list_sessions(
@@ -359,21 +354,23 @@ async def list_sessions(
     )
     result = await session.execute(stmt)
     rows = result.all()
-    
+
     ret = []
     for cs, profile in rows:
         summary = f"{profile.gender}，{profile.age}岁，{profile.occupation}，{profile.marital_status}"
         turn_count = sum(1 for m in cs.messages if m.get("role") == "Seeker")
-        
-        ret.append(SessionListItemResponse(
-            id=cs.id,
-            profile_id=cs.profile_id,
-            status=cs.status,
-            started_at=cs.started_at,
-            ended_at=cs.ended_at,
-            duration_seconds=cs.duration_seconds,
-            score=cs.score,
-            turn_count=turn_count,
-            profile_summary=summary
-        ))
+
+        ret.append(
+            SessionListItemResponse(
+                id=cs.id,
+                profile_id=cs.profile_id,
+                status=cs.status,
+                started_at=cs.started_at,
+                ended_at=cs.ended_at,
+                duration_seconds=cs.duration_seconds,
+                score=cs.score,
+                turn_count=turn_count,
+                profile_summary=summary,
+            )
+        )
     return ret

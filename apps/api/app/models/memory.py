@@ -1,4 +1,4 @@
-"""MindBridge - Long-term Memory Vector Store Models."""
+"""annapod - Long-term Memory Vector Store Models."""
 
 import uuid
 from datetime import datetime, timezone

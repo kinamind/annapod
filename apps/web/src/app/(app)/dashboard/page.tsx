@@ -135,10 +135,10 @@ export default function DashboardPage() {
                       {EVAL_DIMENSIONS[key] ?? key}
                     </span>
                     <span className="font-medium">
-                      {((value as number) * 10).toFixed(0)}%
+                      {(value as number).toFixed(0)}%
                     </span>
                   </div>
-                  <Progress value={(value as number) * 10} className="h-2" />
+                  <Progress value={value as number} className="h-2" />
                 </div>
               ))
             ) : (
@@ -165,9 +165,9 @@ export default function DashboardPage() {
             <CardContent>
               {stats?.weak_dimensions && stats.weak_dimensions.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
-                  {stats.weak_dimensions.map((d) => (
-                    <Badge key={d} variant="secondary">
-                      {EVAL_DIMENSIONS[d] ?? d}
+                  {stats.weak_dimensions.map((item) => (
+                    <Badge key={item.dim} variant="secondary">
+                      {EVAL_DIMENSIONS[item.dim] ?? item.dim}
                     </Badge>
                   ))}
                 </div>

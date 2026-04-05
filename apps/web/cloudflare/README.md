@@ -1,0 +1,63 @@
+# annapod Cloudflare Native Backend
+
+这一层是 annapod 的全 Cloudflare 原生后端骨架，目标架构为：
+
+- Cloudflare Pages: 托管静态前端
+- Pages advanced mode `_worker.js`: 接管 `/api/v1/*`
+- D1: 用户、档案、会话、学习记录、知识库，以及活跃 session 的 `runtime_state`
+- Vectorize: 长期记忆向量检索
+
+## 当前实现
+
+- 已保留原有 REST API 路径形状，尽量不改前端
+- 模拟器运行态当前以 `D1.runtime_state` 形式保存，保证 Pages advanced mode 可直接部署
+- 原始 AnnaAgent 中依赖专门 SFT 模型的子模块，当前先用：
+  - 基础模型承担核心回复与会话评估
+  - 规则/启发式承担情绪、主诉阶段、初始状态等低成本控制逻辑
+
+这符合当前“优先免费部署、再逐步提升效果”的目标。
+
+## 手动配置
+
+1. 在 Cloudflare 创建 D1 数据库
+2. 在 Cloudflare 创建 Vectorize index
+3. 在 `wrangler.jsonc` 中填入真实的 `database_id` 与 `index_name`
+4. 配置环境变量：
+
+```bash
+AI_API_KEY=...
+AI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-5-nano
+EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_MODEL=text-embedding-3-small
+JWT_SECRET=replace-this-with-a-long-random-secret
+```
+
+5. 应用 D1 migrations
+6. 再通过 Pages 连接 GitHub 自动部署
+
+仓库内已提供 GitHub Actions 自动部署工作流：
+
+- `.github/workflows/cloudflare-pages-deploy.yml`
+
+它会在 `main` 分支 push 后自动完成：
+
+- `pnpm build`
+- Pages secrets 同步
+- D1 migrations apply
+- `wrangler pages deploy`
+
+## 迁移边界
+
+当前是第一版 Cloudflare 原生骨架，优先完成：
+
+- 统一部署模型
+- 数据模型落地
+- 前端 API 兼容
+- 活跃 session 的 Pages 兼容持久化
+
+后续可继续提升：
+
+- 把知识库检索也接入 Vectorize
+- 把状态初始化更多交给基础模型
+- 把推荐系统与学习记录做成更完整的闭环

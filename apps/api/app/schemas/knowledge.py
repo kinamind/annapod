@@ -1,4 +1,4 @@
-"""MindBridge - API Schemas: Knowledge Base."""
+"""annapod - API Schemas: Knowledge Base."""
 
 from pydantic import BaseModel
 from typing import Optional
@@ -36,6 +36,7 @@ class KnowledgeSearchResponse(BaseModel):
 
 class KnowledgeDimensionResponse(BaseModel):
     """三维知识库维度信息。"""
+
     schools: list[str]
     issues: list[str]
     difficulties: list[dict]  # [{key, label, description}]

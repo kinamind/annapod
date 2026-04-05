@@ -55,9 +55,9 @@ export default function HomePage() {
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-              心
+              安
             </div>
-            <span className="text-lg font-semibold">MindBridge</span>
+            <span className="text-lg font-semibold">annapod</span>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/login">
@@ -83,11 +83,11 @@ export default function HomePage() {
         >
           <div className="inline-flex items-center gap-2 rounded-full border bg-background px-4 py-1.5 text-sm text-muted-foreground mb-6">
             <Sparkles className="h-4 w-4 text-amber-500" />
-            基于 AnnaAgent 研究 · Gemini AI 驱动
+            基于 AnnaAgent 研究 · 可配置 AI 模型驱动
           </div>
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-            心桥{" "}
-            <span className="text-primary">MindBridge</span>
+            安娜心训舱{" "}
+            <span className="text-primary">annapod</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             AI 驱动的心理咨询师训练平台。通过模拟真实来访者对话、结构化知识学习和智能成长评估，
@@ -161,7 +161,7 @@ export default function HomePage() {
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>
-            © 2025 MindBridge 心桥 · Built by{" "}
+            © 2025 annapod 安娜心训舱 · Built by{" "}
             <a
               href="https://github.com/kinamind"
               className="underline hover:text-foreground"
@@ -172,7 +172,7 @@ export default function HomePage() {
             </a>
           </p>
           <p className="mt-1">
-            Powered by AnnaAgent research & Gemini AI
+            Powered by AnnaAgent research & configurable AI models
           </p>
         </div>
       </footer>

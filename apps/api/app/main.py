@@ -1,4 +1,4 @@
-"""MindBridge API — Main Application Entry Point."""
+"""annapod API — Main Application Entry Point."""
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -25,8 +25,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="MindBridge (心桥) — AI-powered counselor training platform. "
-                "基于 AnnaAgent 研究成果的心理辅导员智能实训平台。",
+    description="annapod（安娜心训舱，简称安心舱）— AI-powered counselor training platform. "
+    "基于 AnnaAgent 研究成果的心理辅导员智能实训平台。",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -53,9 +53,9 @@ app.include_router(learning_router, prefix=API_V1)
 @app.get("/")
 async def root():
     return {
-        "name": "MindBridge API",
+        "name": "annapod API",
         "version": settings.APP_VERSION,
-        "description": "心理辅导员智能实训平台",
+        "description": "安娜心训舱（安心舱）心理辅导员智能实训平台",
         "docs": "/docs",
     }
 

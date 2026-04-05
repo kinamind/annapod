@@ -1,4 +1,4 @@
-/* MindBridge - API Client */
+/* annapod - API Client */
 
 import type {
   Token,
@@ -19,7 +19,7 @@ import type {
   Recommendation,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 class ApiError extends Error {
   status: number;
@@ -37,7 +37,7 @@ async function request<T>(
 ): Promise<T> {
   const token =
     typeof window !== "undefined"
-      ? localStorage.getItem("mindbridge_token")
+      ? localStorage.getItem("annapod_token")
       : null;
 
   const headers: HeadersInit = {

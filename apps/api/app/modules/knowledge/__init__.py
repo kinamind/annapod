@@ -1,5 +1,5 @@
 """
-MindBridge - 3D Knowledge Base Module
+annapod - 3D Knowledge Base Module
 
 Three dimensions:
 1. School (流派): CBT, 精神分析, 人本主义, etc.

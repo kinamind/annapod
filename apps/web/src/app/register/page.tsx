@@ -53,7 +53,7 @@ export default function RegisterPage() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xl">
-              心
+              安
             </div>
           </div>
           <CardTitle className="text-2xl">{t("auth.register.title")}</CardTitle>

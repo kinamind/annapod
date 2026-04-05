@@ -5,6 +5,7 @@ import json
 import re
 from urllib.request import Request, urlopen
 
+from openai import OpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -18,28 +19,50 @@ settings = get_settings()
 def _extract_boolean(text: str) -> bool:
     """Extract boolean from LLM response text."""
     text_lower = text.lower()
-    
+
     negative_patterns = [
-        r'不需要', r'没有提及', r'不涉及', r'没有涉及', r'无关', r'没有提到',
-        r'不是', r'否', r'不包含', r'未提及', r'未涉及', r'未提到',
-        r'不包括', r'并未', r'没有', r'无'
+        r"不需要",
+        r"没有提及",
+        r"不涉及",
+        r"没有涉及",
+        r"无关",
+        r"没有提到",
+        r"不是",
+        r"否",
+        r"不包含",
+        r"未提及",
+        r"未涉及",
+        r"未提到",
+        r"不包括",
+        r"并未",
+        r"没有",
+        r"无",
     ]
     for pattern in negative_patterns:
         if re.search(pattern, text_lower):
             return False
-    
+
     positive_patterns = [
-        r'是的', r'提及了', r'确实', r'有提到', r'涉及到',
-        r'提及', r'确认', r'有关联', r'有联系', r'包含', r'涉及'
+        r"是的",
+        r"提及了",
+        r"确实",
+        r"有提到",
+        r"涉及到",
+        r"提及",
+        r"确认",
+        r"有关联",
+        r"有联系",
+        r"包含",
+        r"涉及",
     ]
     for pattern in positive_patterns:
         if re.search(pattern, text_lower):
             return True
-    
-    therapy_mention = re.search(r'(之前|以前|上次|过去|先前).*?(疗程|治疗|会话)', text_lower)
+
+    therapy_mention = re.search(r"(之前|以前|上次|过去|先前).*?(疗程|治疗|会话)", text_lower)
     if therapy_mention:
         return True
-    
+
     return False
 
 
@@ -63,33 +86,42 @@ async def is_need_long_term_memory(utterance: str) -> bool:
 
 
 def _embed_text_sync(text: str) -> list[float]:
-    """Embed text via Gemini embedding API."""
-    if not settings.EMBEDDING_API_KEY:
+    """Embed text via the configured embedding provider."""
+    api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+    base_url = settings.EMBEDDING_BASE_URL or settings.LLM_BASE_URL
+    provider = settings.EMBEDDING_PROVIDER.lower()
+
+    if not api_key:
         return []
 
-    endpoint = (
-        f"{settings.EMBEDDING_BASE_URL}/models/{settings.EMBEDDING_MODEL}:embedContent"
-        f"?key={settings.EMBEDDING_API_KEY}"
+    if provider == "google":
+        endpoint = f"{base_url}/models/{settings.EMBEDDING_MODEL}:embedContent?key={api_key}"
+        payload = {
+            "model": f"models/{settings.EMBEDDING_MODEL}",
+            "content": {
+                "parts": [{"text": text[:4000]}],
+            },
+        }
+
+        req = Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        values = data.get("embedding", {}).get("values", [])
+        return [float(v) for v in values]
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    response = client.embeddings.create(
+        model=settings.EMBEDDING_MODEL,
+        input=text[:4000],
     )
-    payload = {
-        "model": f"models/{settings.EMBEDDING_MODEL}",
-        "content": {
-            "parts": [{"text": text[:4000]}],
-        },
-    }
-
-    req = Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
-    with urlopen(req, timeout=20) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-
-    values = data.get("embedding", {}).get("values", [])
-    return [float(v) for v in values]
+    return [float(v) for v in response.data[0].embedding]
 
 
 async def embed_text(text: str) -> list[float]:
@@ -157,17 +189,12 @@ async def query_long_term_memory(
     if not rows:
         return ""
 
-    dialogue_history = "\n".join(
-        f"{r.role}: {r.content}" for r in rows
-    )
-    report_str = "\n".join(
-        f"{k}: {v}" for k, v in report.items()
-        if isinstance(v, str)
-    )
+    dialogue_history = "\n".join(f"{r.role}: {r.content}" for r in rows)
+    report_str = "\n".join(f"{k}: {v}" for k, v in report.items() if isinstance(v, str))
     for k, v in report.items():
         if isinstance(v, list):
             report_str += f"\n{k}: " + "; ".join(str(item) for item in v)
-    
+
     instruction = f"""### 任务
 根据之前疗程的对话记录和案例报告，回答咨询师的问题或提供相关信息。
 

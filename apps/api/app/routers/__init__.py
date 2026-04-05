@@ -1,4 +1,4 @@
-"""MindBridge API Routers."""
+"""annapod API Routers."""
 
 from app.routers.auth import router as auth_router
 from app.routers.simulator import router as simulator_router

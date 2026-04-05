@@ -1,4 +1,4 @@
-"""MindBridge - API Schemas: Learning Path & Performance."""
+"""annapod - API Schemas: Learning Path & Performance."""
 
 from pydantic import BaseModel
 from typing import Optional
@@ -21,6 +21,7 @@ class PerformanceRecordResponse(BaseModel):
 
 class DashboardResponse(BaseModel):
     """用户仪表盘。"""
+
     total_sessions: int
     total_practice_hours: float
     average_score: float
@@ -34,12 +35,14 @@ class DashboardResponse(BaseModel):
 
 class GrowthCurveResponse(BaseModel):
     """成长曲线数据。"""
+
     data_points: list  # [{date, overall_score, dimension_scores}]
     trend: str  # improving / stable / declining
 
 
 class MistakeBookResponse(BaseModel):
     """错题集。"""
+
     mistakes: list  # [{id, type, description, frequency, severity, recent_session, suggestion}]
     total: int
     page: int

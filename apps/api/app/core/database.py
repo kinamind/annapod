@@ -1,4 +1,4 @@
-"""MindBridge API - Database engine and session management."""
+"""annapod API - Database engine and session management."""
 
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -21,9 +21,7 @@ async def init_db():
     """Create all tables. Use Alembic in production."""
     async with engine.begin() as conn:
         # Enable pgvector extension
-        await conn.execute(
-            __import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector")
-        )
+        await conn.execute(__import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(SQLModel.metadata.create_all)
 
 

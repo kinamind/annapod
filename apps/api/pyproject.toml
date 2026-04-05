@@ -1,7 +1,7 @@
 [project]
-name = "mindbridge-api"
+name = "annapod-api"
 version = "0.1.0"
-description = "MindBridge API - AI-powered counselor training platform"
+description = "annapod API - AI-powered counselor training platform"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"

@@ -1,4 +1,4 @@
-"""MindBridge - Database Models."""
+"""annapod - Database Models."""
 
 from app.models.user import User
 from app.models.seeker import SeekerProfile, SeekerProfileCache

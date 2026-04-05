@@ -1,4 +1,4 @@
-"""MindBridge - API Schemas: Authentication."""
+"""annapod - API Schemas: Authentication."""
 
 from pydantic import BaseModel, EmailStr
 from typing import Optional

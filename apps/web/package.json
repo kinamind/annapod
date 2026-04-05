@@ -1,12 +1,18 @@
 {
-  "name": "web",
+  "name": "annapod-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/build-worker.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "pages:preview": "pnpm build && wrangler pages dev out",
+    "cf:bootstrap:db": "wrangler d1 create annapod",
+    "cf:bootstrap:vector": "wrangler vectorize create annapod-memory --dimensions=1536 --metric=cosine",
+    "cf:migrate:local": "wrangler d1 migrations apply annapod --local --config wrangler.jsonc",
+    "cf:migrate:remote": "wrangler d1 migrations apply annapod --remote --config wrangler.jsonc",
+    "cf:deploy": "pnpm build && wrangler pages deploy out --project-name annapod --config wrangler.jsonc"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -30,9 +36,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "4.80.0"
   }
 }

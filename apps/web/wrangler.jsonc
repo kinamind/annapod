@@ -1,0 +1,39 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "annapod",
+	"pages_build_output_dir": "out",
+	"compatibility_date": "2026-04-05",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "annapod",
+			"database_id": "0722f444-938b-48b0-ad86-7b212908fe12",
+			"migrations_dir": "cloudflare/migrations",
+			"remote": true
+		}
+	],
+	"vectorize": [
+		{
+			"binding": "MEMORY_INDEX",
+			"index_name": "annapod-memory"
+		},
+		{
+			"binding": "VECTORIZE",
+			"index_name": "annapod-memory",
+			"remote": true
+		}
+	],
+	"vars": {
+		"AI_BASE_URL": "https://api.openai.com/v1",
+		"AI_MODEL": "gpt-5-nano",
+		"EMBEDDING_PROVIDER": "openai_compatible",
+		"EMBEDDING_BASE_URL": "https://api.openai.com/v1",
+		"EMBEDDING_MODEL": "text-embedding-3-small"
+	}
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────
-# MindBridge — One-Click Development Start
+# annapod — One-Click Development Start
 # ─────────────────────────────────────────────────────
 # Usage: bash scripts/start.sh [--setup] [--api-only] [--web-only]
 #
@@ -39,8 +39,8 @@ log_err()   { echo -e "${RED}❌${NC} $*"; }
 banner() {
     echo -e "${CYAN}${BOLD}"
     echo "  ╔══════════════════════════════════════╗"
-    echo "  ║      🧠 MindBridge · 心桥             ║"
-    echo "  ║   AI 心理咨询师训练平台               ║"
+    echo "  ║    🧠 annapod · 安娜心训舱           ║"
+    echo "  ║      安心舱 · AI 训练平台            ║"
     echo "  ╚══════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -94,13 +94,13 @@ ensure_postgres() {
     fi
 
     # Create role and database if they don't exist
-    $psql_bin -U "$(whoami)" -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='mindbridge'" 2>/dev/null | grep -q 1 \
-        || $psql_bin -U "$(whoami)" -d postgres -c "CREATE ROLE mindbridge WITH LOGIN PASSWORD 'mindbridge' CREATEDB;" 2>/dev/null || true
-    $psql_bin -U "$(whoami)" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='mindbridge'" 2>/dev/null | grep -q 1 \
-        || $psql_bin -U "$(whoami)" -d postgres -c "CREATE DATABASE mindbridge OWNER mindbridge;" 2>/dev/null || true
-    $psql_bin -U "$(whoami)" -d mindbridge -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null || true
+    $psql_bin -U "$(whoami)" -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='annapod'" 2>/dev/null | grep -q 1 \
+        || $psql_bin -U "$(whoami)" -d postgres -c "CREATE ROLE annapod WITH LOGIN PASSWORD 'annapod' CREATEDB;" 2>/dev/null || true
+    $psql_bin -U "$(whoami)" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='annapod'" 2>/dev/null | grep -q 1 \
+        || $psql_bin -U "$(whoami)" -d postgres -c "CREATE DATABASE annapod OWNER annapod;" 2>/dev/null || true
+    $psql_bin -U "$(whoami)" -d annapod -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null || true
 
-    log_ok "PostgreSQL ready (database: mindbridge, pgvector: enabled)"
+    log_ok "PostgreSQL ready (database: annapod, pgvector: enabled)"
 }
 
 start_api() {
@@ -279,7 +279,7 @@ if ! $API_ONLY; then
 fi
 
 echo ""
-echo -e "${GREEN}${BOLD}🚀 MindBridge is running!${NC}"
+echo -e "${GREEN}${BOLD}🚀 annapod is running!${NC}"
 echo ""
 show_status
 echo ""

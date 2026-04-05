@@ -73,7 +73,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="flex h-16 items-center gap-2 border-b px-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-          心
+          安
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-semibold">{t("app.name")}</span>
@@ -196,9 +196,9 @@ export function MobileNav() {
       </Sheet>
       <div className="flex items-center gap-2 ml-2">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
-          心
+          安
         </div>
-        <span className="text-sm font-semibold">MindBridge</span>
+        <span className="text-sm font-semibold">annapod</span>
       </div>
     </div>
   );

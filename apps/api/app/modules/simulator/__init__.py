@@ -1,5 +1,5 @@
 """
-MindBridge - Virtual Seeker Simulator Module
+annapod - Virtual Seeker Simulator Module
 Adapted from AnnaAgent (Wang et al., ACL 2025 Findings)
 
 This module implements the core virtual client simulation with:
@@ -22,10 +22,15 @@ from app.modules.simulator.profile_manager import ProfileManager
 __all__ = [
     "SimulatorEngine",
     "emotion_modulation",
-    "gen_complaint_chain", "switch_complaint", "transform_chain",
-    "query_long_term_memory", "is_need_long_term_memory",
+    "gen_complaint_chain",
+    "switch_complaint",
+    "transform_chain",
+    "query_long_term_memory",
+    "is_need_long_term_memory",
     "analyze_style",
-    "event_trigger", "situationalise_events",
-    "fill_scales", "fill_scales_previous",
+    "event_trigger",
+    "situationalise_events",
+    "fill_scales",
+    "fill_scales_previous",
     "ProfileManager",
 ]

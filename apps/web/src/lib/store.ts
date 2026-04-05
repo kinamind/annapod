@@ -1,4 +1,4 @@
-/* MindBridge - Auth Store (Zustand) */
+/* annapod - Auth Store (Zustand) */
 
 import { create } from "zustand";
 import type { User } from "./types";
@@ -26,13 +26,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token:
     typeof window !== "undefined"
-      ? localStorage.getItem("mindbridge_token")
+      ? localStorage.getItem("annapod_token")
       : null,
   isLoading: false,
   isAuthenticated: false,
 
   setToken: (token: string) => {
-    localStorage.setItem("mindbridge_token", token);
+      localStorage.setItem("annapod_token", token);
     set({ token });
   },
 
@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const tokenRes = await auth.login(username, password);
-      localStorage.setItem("mindbridge_token", tokenRes.access_token);
+      localStorage.setItem("annapod_token", tokenRes.access_token);
       set({ token: tokenRes.access_token });
       const user = await auth.me();
       set({ user, isAuthenticated: true, isLoading: false });
@@ -54,7 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const tokenRes = await auth.register(data);
-      localStorage.setItem("mindbridge_token", tokenRes.access_token);
+      localStorage.setItem("annapod_token", tokenRes.access_token);
       set({ token: tokenRes.access_token });
       const user = await auth.me();
       set({ user, isAuthenticated: true, isLoading: false });
@@ -65,7 +65,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    localStorage.removeItem("mindbridge_token");
+    localStorage.removeItem("annapod_token");
     set({ user: null, token: null, isAuthenticated: false });
   },
 
@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await auth.me();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch {
-      localStorage.removeItem("mindbridge_token");
+      localStorage.removeItem("annapod_token");
       set({ user: null, token: null, isAuthenticated: false, isLoading: false });
     }
   },

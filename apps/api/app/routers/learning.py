@@ -1,4 +1,4 @@
-"""MindBridge API - Learning Path Router."""
+"""annapod API - Learning Path Router."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
@@ -9,8 +9,11 @@ from app.core.security import get_current_user_id
 from app.models.learning import PerformanceRecord, UserStats, LearningRecommendation
 from app.models.session import CounselingSession
 from app.schemas.learning import (
-    PerformanceRecordResponse, DashboardResponse,
-    GrowthCurveResponse, MistakeBookResponse, RecommendationResponse,
+    PerformanceRecordResponse,
+    DashboardResponse,
+    GrowthCurveResponse,
+    MistakeBookResponse,
+    RecommendationResponse,
 )
 from app.modules.learning.recommender import LearningRecommender
 from app.modules.learning.evaluator import EVALUATION_DIMENSIONS
@@ -27,10 +30,10 @@ async def get_dashboard(
     # Get or create user stats
     recommender = LearningRecommender(session)
     stats = await recommender.update_user_stats(user_id)
-    
+
     # Get recommendations
     recommendations = await recommender.generate_recommendations(user_id, max_recommendations=5)
-    
+
     # Build growth curve
     stmt = (
         select(PerformanceRecord)
@@ -39,12 +42,9 @@ async def get_dashboard(
     )
     result = await session.execute(stmt)
     records = result.scalars().all()
-    
-    growth_curve = [
-        {"date": r.created_at.isoformat(), "score": r.overall_score}
-        for r in records
-    ]
-    
+
+    growth_curve = [{"date": r.created_at.isoformat(), "score": r.overall_score} for r in records]
+
     return DashboardResponse(
         total_sessions=stats.total_sessions,
         total_practice_hours=stats.total_practice_hours,
@@ -71,7 +71,7 @@ async def get_growth_curve(
     )
     result = await session.execute(stmt)
     records = list(result.scalars().all())
-    
+
     data_points = [
         {
             "date": r.created_at.isoformat(),
@@ -80,7 +80,7 @@ async def get_growth_curve(
         }
         for r in records
     ]
-    
+
     # Determine trend
     if len(records) < 3:
         trend = "stable"
@@ -95,7 +95,7 @@ async def get_growth_curve(
             trend = "declining"
         else:
             trend = "stable"
-    
+
     return GrowthCurveResponse(data_points=data_points, trend=trend)
 
 
@@ -114,7 +114,7 @@ async def get_mistake_book(
     )
     result = await session.execute(stmt)
     records = result.scalars().all()
-    
+
     # Aggregate mistakes
     all_mistakes: dict[str, dict] = {}
     for record in records:
@@ -131,11 +131,11 @@ async def get_mistake_book(
                     "suggestion": mistake.get("suggestion", ""),
                 }
             all_mistakes[m_key]["frequency"] += 1
-    
+
     mistakes = sorted(all_mistakes.values(), key=lambda x: -x["frequency"])
     total = len(mistakes)
-    paginated = mistakes[(page - 1) * page_size: page * page_size]
-    
+    paginated = mistakes[(page - 1) * page_size : page * page_size]
+
     return MistakeBookResponse(
         mistakes=paginated,
         total=total,

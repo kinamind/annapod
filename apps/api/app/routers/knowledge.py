@@ -1,4 +1,4 @@
-"""MindBridge API - Knowledge Router."""
+"""annapod API - Knowledge Router."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.security import get_current_user_id
 from app.schemas.knowledge import (
-    KnowledgeItemResponse, KnowledgeSearchRequest, KnowledgeSearchResponse,
+    KnowledgeItemResponse,
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
     KnowledgeDimensionResponse,
 )
 from app.modules.knowledge.service import KnowledgeService
@@ -40,18 +42,21 @@ async def search_knowledge(
         page_size=data.page_size,
     )
     return KnowledgeSearchResponse(
-        items=[KnowledgeItemResponse(
-            id=item.id,
-            school=item.school,
-            issue=item.issue,
-            difficulty=item.difficulty,
-            title=item.title,
-            content=item.content,
-            summary=item.summary,
-            source_type=item.source_type,
-            source_ref=item.source_ref,
-            tags=item.tags or [],
-        ) for item in items],
+        items=[
+            KnowledgeItemResponse(
+                id=item.id,
+                school=item.school,
+                issue=item.issue,
+                difficulty=item.difficulty,
+                title=item.title,
+                content=item.content,
+                summary=item.summary,
+                source_type=item.source_type,
+                source_ref=item.source_ref,
+                tags=item.tags or [],
+            )
+            for item in items
+        ],
         total=total,
         page=data.page,
         page_size=data.page_size,

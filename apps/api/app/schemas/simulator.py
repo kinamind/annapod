@@ -1,4 +1,4 @@
-"""MindBridge - API Schemas: Simulator (Virtual Client)."""
+"""annapod - API Schemas: Simulator (Virtual Client)."""
 
 from pydantic import BaseModel
 from typing import Optional
@@ -72,8 +72,9 @@ class SessionGroupResponse(BaseModel):
     session_count: int
     status: str
 
-    
+
 from datetime import datetime
+
 
 class SessionListItemResponse(BaseModel):
     id: str

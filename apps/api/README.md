@@ -1,3 +1,3 @@
-# MindBridge API
+# annapod API
 
-FastAPI backend for the MindBridge counselor training platform.
+FastAPI backend for annapod, the 安娜心训舱 counselor training platform.

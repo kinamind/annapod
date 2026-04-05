@@ -1,5 +1,5 @@
 """
-MindBridge — pyinfra Local Development Setup
+annapod — pyinfra Local Development Setup
 
 One-click environment configuration and service startup.
 Handles: PostgreSQL (local Homebrew), Python backend, Node.js frontend.
@@ -7,7 +7,7 @@ Handles: PostgreSQL (local Homebrew), Python backend, Node.js frontend.
 Usage:
     # From project root:
     cd apps/api && uv run pyinfra @local deploy/setup_local.py
-    
+
     # Or directly:
     uv run pyinfra @local deploy/setup_local.py
 """
@@ -22,9 +22,9 @@ API_DIR = os.path.join(PROJECT_ROOT, "apps", "api")
 WEB_DIR = os.path.join(PROJECT_ROOT, "apps", "web")
 ENV_FILE = os.path.join(API_DIR, ".env")
 
-DB_NAME = "mindbridge"
-DB_USER = "mindbridge"
-DB_PASS = "mindbridge"
+DB_NAME = "annapod"
+DB_USER = "annapod"
+DB_PASS = "annapod"
 DB_PORT = "5432"
 
 API_PORT = 8000
@@ -35,6 +35,7 @@ WEB_PORT = 3000
 def ensure_env():
     """Copy .env.example to .env if it doesn't exist."""
     import shutil
+
     example = os.path.join(API_DIR, ".env.example")
     if not os.path.exists(ENV_FILE):
         if os.path.exists(example):
@@ -55,7 +56,7 @@ python.call(
 
 # ─── Step 2: Local PostgreSQL + pgvector ──────────
 def setup_postgres():
-    """Ensure local PostgreSQL is running with mindbridge database and pgvector."""
+    """Ensure local PostgreSQL is running with annapod database and pgvector."""
     import subprocess
     import shutil
 
@@ -78,13 +79,17 @@ def setup_postgres():
                 break
 
     if not pg_isready:
-        print("❌ PostgreSQL not found. Install via: brew install postgresql@17 pgvector")
+        print(
+            "❌ PostgreSQL not found. Install via: brew install postgresql@17 pgvector"
+        )
         raise SystemExit(1)
 
     # Check if running
     result = subprocess.run([pg_isready], capture_output=True, text=True)
     if result.returncode != 0:
-        print("❌ PostgreSQL is not running. Start with: brew services start postgresql@17")
+        print(
+            "❌ PostgreSQL is not running. Start with: brew services start postgresql@17"
+        )
         raise SystemExit(1)
     print("✅ PostgreSQL is running")
 
@@ -92,14 +97,29 @@ def setup_postgres():
 
     # Create role if not exists
     result = subprocess.run(
-        [psql_bin, "-U", current_user, "-d", "postgres", "-tc",
-         f"SELECT 1 FROM pg_roles WHERE rolname='{DB_USER}'"],
-        capture_output=True, text=True,
+        [
+            psql_bin,
+            "-U",
+            current_user,
+            "-d",
+            "postgres",
+            "-tc",
+            f"SELECT 1 FROM pg_roles WHERE rolname='{DB_USER}'",
+        ],
+        capture_output=True,
+        text=True,
     )
     if "1" not in result.stdout:
         subprocess.run(
-            [psql_bin, "-U", current_user, "-d", "postgres", "-c",
-             f"CREATE ROLE {DB_USER} WITH LOGIN PASSWORD '{DB_PASS}' CREATEDB;"],
+            [
+                psql_bin,
+                "-U",
+                current_user,
+                "-d",
+                "postgres",
+                "-c",
+                f"CREATE ROLE {DB_USER} WITH LOGIN PASSWORD '{DB_PASS}' CREATEDB;",
+            ],
             check=True,
         )
         print(f"✅ Created role '{DB_USER}'")
@@ -108,14 +128,29 @@ def setup_postgres():
 
     # Create database if not exists
     result = subprocess.run(
-        [psql_bin, "-U", current_user, "-d", "postgres", "-tc",
-         f"SELECT 1 FROM pg_database WHERE datname='{DB_NAME}'"],
-        capture_output=True, text=True,
+        [
+            psql_bin,
+            "-U",
+            current_user,
+            "-d",
+            "postgres",
+            "-tc",
+            f"SELECT 1 FROM pg_database WHERE datname='{DB_NAME}'",
+        ],
+        capture_output=True,
+        text=True,
     )
     if "1" not in result.stdout:
         subprocess.run(
-            [psql_bin, "-U", current_user, "-d", "postgres", "-c",
-             f"CREATE DATABASE {DB_NAME} OWNER {DB_USER};"],
+            [
+                psql_bin,
+                "-U",
+                current_user,
+                "-d",
+                "postgres",
+                "-c",
+                f"CREATE DATABASE {DB_NAME} OWNER {DB_USER};",
+            ],
             check=True,
         )
         print(f"✅ Created database '{DB_NAME}'")
@@ -124,8 +159,15 @@ def setup_postgres():
 
     # Enable pgvector (requires superuser)
     subprocess.run(
-        [psql_bin, "-U", current_user, "-d", DB_NAME, "-c",
-         "CREATE EXTENSION IF NOT EXISTS vector;"],
+        [
+            psql_bin,
+            "-U",
+            current_user,
+            "-d",
+            DB_NAME,
+            "-c",
+            "CREATE EXTENSION IF NOT EXISTS vector;",
+        ],
         capture_output=True,
     )
     print("✅ pgvector extension enabled")
@@ -146,7 +188,8 @@ def setup_backend():
     result = subprocess.run(
         ["uv", "sync"],
         cwd=API_DIR,
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         print(f"❌ uv sync failed:\n{result.stderr}")
@@ -176,7 +219,8 @@ def setup_frontend():
     result = subprocess.run(
         ["pnpm", "install"],
         cwd=WEB_DIR,
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         print(f"❌ pnpm install failed:\n{result.stderr}")
@@ -193,7 +237,7 @@ python.call(
 # ─── Step 5: Summary ─────────────────────────────
 def print_summary():
     print("\n" + "=" * 60)
-    print("🎉 MindBridge 开发环境配置完成！")
+    print("🎉 annapod 开发环境配置完成！")
     print("=" * 60)
     print()
     print(f"  PostgreSQL:  localhost:{DB_PORT}  (user: {DB_USER}, db: {DB_NAME})")

@@ -122,7 +122,7 @@ function ProfileCard({
 }
 
 function UserSessionsList() {
-  const { locale, t } = useLocale();
+  const { t } = useLocale();
   const router = useRouter();
 
   const { data: sessions, isLoading, isError } = useQuery({
@@ -170,7 +170,7 @@ function UserSessionsList() {
             <div>
               <Button 
                 variant={ses.status === "completed" ? "outline" : "default"}
-                onClick={() => router.push(`/simulator/chat/${ses.id}`)}
+                onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(ses.id)}`)}
               >
                 {ses.status === "completed" ? (
                   <><Eye className="h-4 w-4 mr-2" /> View</>
@@ -213,7 +213,7 @@ export default function SimulatorPage() {
         profile_id: profile.id,
         enable_long_term_memory: enableLtm,
       });
-      router.push(`/simulator/chat/${res.session_id}`);
+      router.push(`/simulator/chat?sessionId=${encodeURIComponent(res.session_id)}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("simulator.createFailed");
       toast.error(msg);

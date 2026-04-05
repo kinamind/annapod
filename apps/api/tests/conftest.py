@@ -1,4 +1,4 @@
-"""Shared test fixtures for MindBridge API tests."""
+"""Shared test fixtures for annapod API tests."""
 
 import pytest
 from unittest.mock import AsyncMock, patch

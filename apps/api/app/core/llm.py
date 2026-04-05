@@ -1,4 +1,4 @@
-"""MindBridge API - Shared LLM client (OpenAI-compatible)."""
+"""annapod API - Shared LLM client (OpenAI-compatible)."""
 
 import asyncio
 from openai import AsyncOpenAI, RateLimitError, APIError
@@ -36,7 +36,7 @@ async def llm_chat(
         kwargs["tools"] = tools
     if tool_choice:
         kwargs["tool_choice"] = tool_choice
-        
+
     max_retries = 4
     for attempt in range(max_retries):
         try:
@@ -46,8 +46,7 @@ async def llm_chat(
             if attempt == max_retries - 1:
                 raise e
             # Log issue and backoff
-            await asyncio.sleep(2 ** attempt)
-
+            await asyncio.sleep(2**attempt)
 
 
 async def llm_chat_text(

@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { simulator } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -23,8 +22,8 @@ import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default function ChatPage() {
-  const params = useParams();
-  const sessionId = params.sessionId as string;
+  const searchParams = useSearchParams();
+  const sessionId = searchParams.get("sessionId") ?? "";
   const router = useRouter();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -49,18 +48,25 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    // Load existing session data
+    if (!sessionId) {
+      return;
+    }
+
     async function loadSession() {
       try {
         const data = await simulator.getSession(sessionId);
         if (data.messages && data.messages.length > 0) {
-          const formattedMsgs: ChatMessage[] = data.messages.map(m => ({
-            role: m.role.toLowerCase() === "seeker" || m.role.toLowerCase() === "client" ? "client" : "counselor",
+          const formattedMsgs: ChatMessage[] = data.messages.map((m) => ({
+            role:
+              m.role.toLowerCase() === "seeker" ||
+              m.role.toLowerCase() === "client"
+                ? "client"
+                : "counselor",
             content: m.content,
-            timestamp: new Date().toISOString(), // Mock timestamp for history
+            timestamp: new Date().toISOString(),
           }));
           setMessages(formattedMsgs);
-          const cCount = formattedMsgs.filter(m => m.role === "client").length;
+          const cCount = formattedMsgs.filter((m) => m.role === "client").length;
           setTurnCount(cCount);
         }
         if (data.status === "completed") {
@@ -73,6 +79,7 @@ export default function ChatPage() {
         console.error("Failed to load session:", err);
       }
     }
+
     loadSession();
   }, [sessionId]);
 
@@ -82,7 +89,7 @@ export default function ChatPage() {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || isLoading || sessionEnded) return;
+    if (!sessionId || !text || isLoading || sessionEnded) return;
 
     const userMsg: ChatMessage = {
       role: "counselor",
@@ -114,7 +121,7 @@ export default function ChatPage() {
   };
 
   const handleEnd = async () => {
-    if (isEnding) return;
+    if (!sessionId || isEnding) return;
     setIsEnding(true);
     try {
       const res = await simulator.endSession(sessionId);
@@ -144,9 +151,19 @@ export default function ChatPage() {
     }
   };
 
+  if (!sessionId) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <Card className="max-w-md p-6 text-center">
+          <p className="text-sm text-muted-foreground">缺少会话 ID，请从来访者列表重新进入。</p>
+          <Button className="mt-4" onClick={() => router.push("/simulator")}>返回模拟器</Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header Bar */}
       <div className="flex items-center justify-between border-b px-4 py-3 bg-card">
         <div className="flex items-center gap-3">
           <Button
@@ -183,17 +200,13 @@ export default function ChatPage() {
         </Button>
       </div>
 
-      {/* Messages */}
       <ScrollArea className="flex-1 px-4 py-4">
         <div className="max-w-3xl mx-auto space-y-4">
-          {/* Welcome */}
           {messages.length === 0 && !isLoading && (
             <div className="text-center py-12 text-muted-foreground">
               <Bot className="h-10 w-10 mx-auto mb-3 opacity-50" />
               <p className="text-sm">来访者已就座，请开始咨询对话。</p>
-              <p className="text-xs mt-1">
-                您可以从自我介绍和开放性提问开始。
-              </p>
+              <p className="text-xs mt-1">您可以从自我介绍和开放性提问开始。</p>
             </div>
           )}
 
@@ -256,16 +269,13 @@ export default function ChatPage() {
         </div>
       </ScrollArea>
 
-      {/* Evaluation Summary (shown after session ends) */}
       {sessionEnded && evaluation && (
         <div className="border-t bg-muted/30 px-4 py-4">
           <div className="max-w-3xl mx-auto">
             <Card className="p-4">
               <h3 className="font-semibold text-sm mb-2">
                 会话评估 · 综合得分:{" "}
-                <span className="text-primary">
-                  {score?.toFixed(1) ?? "N/A"} / 10
-                </span>
+                <span className="text-primary">{score?.toFixed(1) ?? "N/A"} / 10</span>
               </h3>
               {evaluation.feedback && (
                 <p className="text-sm text-muted-foreground mb-2">
@@ -293,7 +303,6 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Input Area */}
       {!sessionEnded && (
         <div className="border-t bg-card px-4 py-3">
           <div className="max-w-3xl mx-auto flex gap-2">

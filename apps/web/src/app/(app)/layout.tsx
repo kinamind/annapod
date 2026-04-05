@@ -2,17 +2,17 @@
 
 import { useAuthStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Sidebar, MobileNav } from "@/components/sidebar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isLoading, token } = useAuthStore();
   const router = useRouter();
-  const [hasMounted, setHasMounted] = useState(false);
-
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
+  const hasMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     if (hasMounted && !isLoading && !token) {

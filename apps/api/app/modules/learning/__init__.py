@@ -1,5 +1,5 @@
 """
-MindBridge - Learning Path Module
+annapod - Learning Path Module
 
 Handles:
 - Performance evaluation after each session

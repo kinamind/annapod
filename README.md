@@ -1,4 +1,4 @@
-# MindBridge 心桥
+# annapod 安娜心训舱
 
 > 面向心理辅导员培训的智能实训平台
 
@@ -6,7 +6,7 @@
 
 ## 项目概述
 
-MindBridge（心桥）是一个基于 AI 的心理辅导员培训平台，通过虚拟来访者模拟、三维知识库和个性化学习路径，帮助心理辅导员在安全的环境中提升专业技能。
+annapod（安娜心训舱，简称安心舱）是一个基于 AI 的心理辅导员培训平台，通过虚拟来访者模拟、三维知识库和个性化学习路径，帮助心理辅导员在安全的环境中提升专业技能。
 
 ### 核心功能
 
@@ -19,33 +19,22 @@ MindBridge（心桥）是一个基于 AI 的心理辅导员培训平台，通过
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Next.js 15, TypeScript, Tailwind CSS, shadcn/ui |
-| 后端 | FastAPI, Python 3.12+, SQLModel |
-| 数据库 | PostgreSQL, PGVector |
-| AI | LLM (OpenAI-compatible API) |
-| 部署 | Cloud Run + Cloud SQL |
-| 工具链 | uv (Python), pnpm (Node.js), Git |
+| 前端 | Next.js 16, TypeScript, Tailwind CSS, shadcn/ui |
+| 边缘后端 | Cloudflare Pages advanced mode Worker |
+| 数据库 | Cloudflare D1 + Vectorize |
+| AI | LLM (OpenAI-compatible API, default `gpt-5-nano`) |
+| 部署 | Cloudflare Pages（前端 + `/api/v1/*`） |
+| 工具链 | pnpm (Node.js), Wrangler, Git |
 
 ## 快速开始
 
 ### 前置条件
 
-- Python 3.12+
 - Node.js 20+
-- PostgreSQL 16+ (with pgvector extension)
-- uv (Python 包管理器)
 - pnpm (Node.js 包管理器)
+- Cloudflare 账号
 
-### 后端
-
-```bash
-cd apps/api
-uv sync
-cp .env.example .env  # 编辑配置
-uv run uvicorn app.main:app --reload
-```
-
-### 前端
+### 本地前端开发
 
 ```bash
 cd apps/web
@@ -54,24 +43,45 @@ cp .env.example .env.local  # 编辑配置
 pnpm dev
 ```
 
+### 构建 Cloudflare Pages 输出
+
+```bash
+cd apps/web
+pnpm build
+```
+
+构建完成后会同时生成：
+
+- `out/` 静态前端资源
+- `out/_worker.js` Cloudflare Pages advanced mode Worker
+
+## 部署说明
+
+- 当前目标架构为全 Cloudflare 原生方案：
+- `apps/web` 构建后直接部署到 Cloudflare Pages。
+- `/api/v1/*` 由 Pages advanced mode Worker 处理。
+- 活跃咨询会话以 D1 `runtime_state` 形式保存。
+- 用户、档案、知识库、学习记录存入 D1。
+- 长期记忆检索使用 Vectorize。
+
+Cloudflare 侧还需要手动完成：
+
+1. 创建 D1 数据库
+2. 创建 Vectorize index
+3. 在 `apps/web/wrangler.jsonc` 中填入真实 `database_id`
+4. 配置 `AI_API_KEY`、`JWT_SECRET` 等环境变量
+5. 执行 D1 migrations
+
 ## 项目结构
 
 ```
-mindbridge/
+annapod/
 ├── apps/
-│   ├── api/                  # FastAPI 后端
-│   │   └── app/
-│   │       ├── core/         # 配置、安全、依赖
-│   │       ├── models/       # 数据库模型 (SQLModel)
-│   │       ├── schemas/      # Pydantic 请求/响应模型
-│   │       ├── routers/      # API 路由
-│   │       ├── services/     # 业务逻辑服务层
-│   │       └── modules/      # 功能模块
-│   │           ├── simulator/    # 虚拟来访者模拟
-│   │           ├── knowledge/    # 三维知识库
-│   │           ├── learning/     # 个性化学习路径
-│   │           └── preview/      # 咨访场景预演
-│   └── web/                  # Next.js 前端
+│   ├── api/                  # 旧 FastAPI 后端（迁移参考）
+│   └── web/                  # Pages 前端 + Cloudflare 原生后端
+│       ├── src/              # Next.js 页面与组件
+│       ├── cloudflare/       # Worker / D1 / Vectorize 逻辑与 migrations
+│       └── scripts/          # Worker bundling 脚本
 ├── packages/shared/          # 共享类型与常量
 ├── data/                     # 数据文件
 │   ├── profiles/             # 来访者档案
@@ -89,6 +99,12 @@ mindbridge/
 
 > Wang, M., et al. (2025). *AnnaAgent: Dynamic Evolution Agent System with Multi-Session Memory for Realistic Seeker Simulation*. ACL 2025 Findings.
 > [[Paper]](https://aclanthology.org/2025.findings-acl.1192.pdf) [[Code]](https://github.com/sci-m-wang/AnnaAgent) [[Dataset]](https://huggingface.co/datasets/sci-m-wang/Anna-CPsyCounD)
+
+当前 Cloudflare 版本做了成本优先的工程化简化：
+
+- 保留 AnnaAgent 的多轮记忆、主诉阶段推进、长期记忆检索思想
+- 原项目中依赖专门 SFT 模型的子模块，第一版改为“基础模型 + 规则/启发式控制”
+- 先把完整 workflow 跑通，再逐步补强效果
 
 ## 贡献者
 
