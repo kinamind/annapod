@@ -1,6 +1,7 @@
 import type { CloudflareEnv } from "./types";
 
 const encoder = new TextEncoder();
+const PBKDF2_ITERATIONS = 100000;
 
 function getJwtSecret(env: CloudflareEnv) {
   const secret = env.JWT_SECRET?.trim();
@@ -41,17 +42,17 @@ export async function hashPassword(password: string) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 120000 },
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS },
     key,
     256
   );
-  return `pbkdf2$120000$${bytesToBase64Url(salt)}$${bytesToBase64Url(new Uint8Array(bits))}`;
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToBase64Url(salt)}$${bytesToBase64Url(new Uint8Array(bits))}`;
 }
 
 export async function verifyPassword(password: string, hashed: string) {
   const [scheme, rawIterations, rawSalt, expected] = hashed.split("$");
   if (scheme !== "pbkdf2" || !rawIterations || !rawSalt || !expected) return false;
-  const iterations = Number(rawIterations);
+  const iterations = Math.min(Number(rawIterations), PBKDF2_ITERATIONS);
   const salt = Uint8Array.from(base64UrlToString(rawSalt), (c) => c.charCodeAt(0));
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
