@@ -12,7 +12,9 @@
     "cf:bootstrap:vector": "sh -c 'wrangler vectorize info annapod-memory >/dev/null 2>&1 || wrangler vectorize create annapod-memory --dimensions=1536 --metric=cosine'",
     "cf:migrate:local": "wrangler d1 migrations apply annapod --local --config wrangler.jsonc",
     "cf:migrate:remote": "wrangler d1 migrations apply annapod --remote --config wrangler.jsonc",
-    "cf:deploy": "pnpm build && wrangler pages deploy out --project-name annapod --config wrangler.jsonc"
+    "cf:deploy": "pnpm build && wrangler pages deploy out --project-name annapod --config wrangler.jsonc",
+    "cf:precompute:college100": "python3 scripts/precompute_profile_caches.py --limit 100",
+    "cf:apply:precomputed": "wrangler d1 execute annapod --remote --file /tmp/annapod_profile_cache_seed.sql --config wrangler.jsonc"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

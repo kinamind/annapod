@@ -3,12 +3,16 @@ import { chatCompletion, tryParseJson } from "./llm";
 import type { CloudflareEnv, ComplaintStage, ConversationMessage, EvaluationResult, SessionSnapshot } from "./types";
 
 interface InitializationDraft {
+  event?: string;
   situation?: string;
   status?: string;
   style?: string[];
-  sample_statements?: string[];
+  previous_scales?: Record<string, string[]>;
+  current_scales?: Record<string, string[]>;
   complaint_chain?: string[];
   current_emotion?: string;
+  system_prompt?: string;
+  init_trace?: Record<string, unknown>;
   init_source?: "llm" | "heuristic_fallback";
 }
 
@@ -34,12 +38,16 @@ function buildFallbackInitialization(
   previousConversations: ConversationMessage[]
 ) {
   return {
+    event: "",
     situation: createSituation(profile),
     status: createStatus(profile, report),
     style: createStyle(previousConversations),
-    sampleStatements: sampleStatements(previousConversations),
+    sampleStatements: [],
     complaintChain: createComplaintChain(profile),
+    scales: {},
     currentEmotion: "confusion",
+    initTrace: {},
+    systemPrompt: "",
     initSource: "heuristic_fallback" as const,
   };
 }
@@ -57,7 +65,7 @@ export async function initializeProfileState(
     .map((item) => `${item.role}: ${item.content}`)
     .join("\n");
 
-  const prompt = `你在执行 AnnaAgent 风格的来访者首次实例化。请基于来访者画像、案例报告和既有对话样本，构建一个适合首次会话启动的内部状态。\n\n要求：\n1. 结果必须贴合画像与案例，不要写成咨询师视角。\n2. complaint_chain 需要体现从表层主诉到更深层担忧的递进。\n3. style 只写说话风格，不写建议。\n4. sample_statements 尽量贴近既有来访者口吻。\n5. 如果开启长期记忆，可以把既往疗程对当前状态的影响整合进 status。\n6. 严格输出 JSON，不要附加解释。\n\n输出 JSON 结构：\n{\n  "situation": "2到4句，描述当前触发处境",\n  "status": "2到4句，描述当前心理状态",\n  "style": ["...", "...", "..."],\n  "sample_statements": ["...", "..."],\n  "complaint_chain": ["第一阶段主诉", "第二阶段主诉", "第三阶段主诉"],\n  "current_emotion": "confusion|sadness|nervousness|anger|fear|shame|hopelessness"\n}\n\n来访者画像：\n${JSON.stringify(profile, null, 2)}\n\n案例报告：\n${JSON.stringify(report, null, 2)}\n\n既有对话样本：\n${previousDialogue || "无"}\n\n长期记忆模式：${hasLongTermMemory ? "开启" : "关闭"}`;
+  const prompt = `你在执行 AnnaAgent 风格的来访者首次实例化。请严格按照以下内部流程完成：\n1. 生成近期触发事件 event\n2. 基于 event 生成 second-person 情境 situation\n3. 根据画像和历史对话总结说话风格 style\n4. 生成不少于3阶段的 complaint_chain\n5. 基于 portrait/report 推断 previous_scales（p_bdi/p_ghq/p_sass）\n6. 基于当前会话起点推断 current_scales（bdi/ghq/sass）\n7. 根据量表变化总结当前状态 status\n8. 推断当前主情绪 current_emotion\n9. 生成最终 system_prompt\n\n约束：\n- 严格贴合来访者画像、案例报告和历史对话，不要写成咨询师视角。\n- 不要生成主动开场白，等待咨询师先发起对话。\n- style 只写说话风格，不写建议。\n- complaint_chain 必须体现从表层主诉到更深层担忧的递进。\n- situation 必须是第二人称，3-5句，不要包含显式年龄/性别。\n- scales 使用 A/B/C/D 数组表达；previous_scales 包含 p_bdi/p_ghq/p_sass，current_scales 包含 bdi/ghq/sass。\n- system_prompt 必须是完整可直接投喂给 seeker 模型的 prompt。\n- 严格输出 JSON，不要附加解释。\n\n输出 JSON 结构：\n{\n  "event": "string",\n  "situation": "string",\n  "status": "string",\n  "style": ["...", "...", "..."],\n  "previous_scales": {"p_bdi":["A"], "p_ghq":["A"], "p_sass":["A"]},\n  "current_scales": {"bdi":["A"], "ghq":["A"], "sass":["A"]},\n  "complaint_chain": ["第一阶段主诉", "第二阶段主诉", "第三阶段主诉"],\n  "current_emotion": "confusion|sadness|nervousness|anger|fear|shame|hopelessness",\n  "system_prompt": "string",\n  "init_trace": {"notes":"简短说明关键判断"}\n}\n\n来访者画像：\n${JSON.stringify(profile, null, 2)}\n\n案例报告：\n${JSON.stringify(report, null, 2)}\n\n既有对话样本：\n${previousDialogue || "无"}\n\n长期记忆模式：${hasLongTermMemory ? "开启" : "关闭"}`;
 
   try {
     const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
@@ -69,16 +77,21 @@ export async function initializeProfileState(
       : [];
 
     return {
+      event: draft.event?.trim() || fallback.event,
       situation: draft.situation?.trim() || fallback.situation,
       status: draft.status?.trim() || fallback.status,
       style: Array.isArray(draft.style) && draft.style.length
         ? draft.style.map((item) => String(item).trim()).filter(Boolean).slice(0, 5)
         : fallback.style,
-      sampleStatements: Array.isArray(draft.sample_statements) && draft.sample_statements.length
-        ? draft.sample_statements.map((item) => String(item).trim()).filter(Boolean).slice(0, 3)
-        : fallback.sampleStatements,
+      sampleStatements: [],
       complaintChain: complaintChain.length >= 3 ? complaintChain : fallback.complaintChain,
+      scales: {
+        ...(draft.previous_scales || {}),
+        ...(draft.current_scales || {}),
+      },
       currentEmotion: draft.current_emotion?.trim() || fallback.currentEmotion,
+      initTrace: draft.init_trace || fallback.initTrace,
+      systemPrompt: draft.system_prompt?.trim() || fallback.systemPrompt,
       initSource: "llm" as const,
     };
   } catch {
@@ -153,9 +166,6 @@ ${snapshot.situation}
 
 ## Status
 ${snapshot.status}
-
-## Example of statement
-${snapshot.sampleStatements.join("\n")}
 
 ## Characteristics of speaking style
 - ${snapshot.style.join("\n- ")}

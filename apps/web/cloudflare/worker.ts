@@ -6,7 +6,8 @@ import { DIFFICULTY_LEVELS, EVALUATION_DIMENSIONS, GROUP_OPTIONS, ISSUE_OPTIONS,
 import { indexLongTermMemory } from "./memory";
 import { chatWithSnapshot, createInitialSnapshot } from "./session-engine";
 import { evaluateSession } from "./simulator";
-import type { CloudflareEnv, ProfileView, SeekerProfileRecord, SessionSnapshot } from "./types";
+import { inferEmotion } from "./simulator";
+import type { CloudflareEnv, ProfileView, SeekerProfileCacheRecord, SeekerProfileRecord, SessionSnapshot } from "./types";
 import { buildSqlFilters, corsHeaders, errorResponse, jsonResponse, jsonText, nowIso, readForm, readJson, safeJsonParse } from "./utils";
 
 function toProfile(record: SeekerProfileRecord): ProfileView {
@@ -25,6 +26,46 @@ function toProfile(record: SeekerProfileRecord): ProfileView {
     portrait_raw: safeJsonParse(record.portrait_raw || "{}", {}),
     source_id: record.source_id,
   };
+}
+
+function snapshotFromCache(
+  cache: SeekerProfileCacheRecord,
+  input: {
+    sessionId: string;
+    userId: string;
+    profileId: string;
+    sessionGroupId?: string | null;
+    hasLongTermMemory: boolean;
+    profile: SessionSnapshot["profile"];
+    report: Record<string, unknown>;
+    previousConversations: SessionSnapshot["previousConversations"];
+  }
+): SessionSnapshot {
+  const snapshot: SessionSnapshot = {
+    sessionId: input.sessionId,
+    userId: input.userId,
+    profileId: input.profileId,
+    sessionGroupId: input.sessionGroupId || null,
+    hasLongTermMemory: input.hasLongTermMemory,
+    profile: input.profile,
+    report: input.report,
+    previousConversations: input.previousConversations,
+    situation: cache.situation,
+    style: safeJsonParse(cache.style, []),
+    status: cache.status,
+    sampleStatements: [],
+    complaintChain: safeJsonParse(cache.complaint_chain, []),
+    chainIndex: 1,
+    currentEmotion: cache.current_emotion || "confusion",
+    systemPrompt: cache.system_prompt,
+    conversation: [],
+    llmMessages: [],
+    turnCount: 0,
+    initSource: "cache",
+    initDurationMs: 0,
+  };
+  snapshot.currentEmotion = inferEmotion(snapshot);
+  return snapshot;
 }
 
 async function requireUser(request: Request, env: CloudflareEnv) {
@@ -130,7 +171,7 @@ async function startSession(request: Request, env: CloudflareEnv) {
     .bind(sessionId, userId, profile.id, sessionGroupId, hasLongTermMemory ? 1 : 0, sessionNumber, nowIso())
     .run();
 
-  const snapshot = await createInitialSnapshot(env, {
+  const snapshotInput = {
     sessionId,
     userId,
     profileId: profile.id,
@@ -146,7 +187,53 @@ async function startSession(request: Request, env: CloudflareEnv) {
     },
     report: profile.report,
     previousConversations: profile.conversation,
-  });
+  };
+
+  const cache = await env.DB
+    .prepare(
+      `SELECT * FROM seeker_profile_caches
+       WHERE profile_id = ? AND has_long_term_memory = ?
+       ORDER BY used_count DESC, created_at ASC
+       LIMIT 1`
+    )
+    .bind(profile.id, hasLongTermMemory ? 1 : 0)
+    .first<SeekerProfileCacheRecord>();
+
+  let snapshot: SessionSnapshot;
+  if (cache) {
+    snapshot = snapshotFromCache(cache, snapshotInput);
+    await env.DB
+      .prepare(`UPDATE seeker_profile_caches SET used_count = used_count + 1 WHERE id = ?`)
+      .bind(cache.id)
+      .run();
+  } else {
+    snapshot = await createInitialSnapshot(env, snapshotInput);
+    await env.DB
+      .prepare(
+        `INSERT OR REPLACE INTO seeker_profile_caches
+         (id, profile_id, system_prompt, complaint_chain, style, situation, status, event, scales, current_emotion, has_long_term_memory, skill_version, source_model, init_trace, created_at, used_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        `${profile.id}:${hasLongTermMemory ? "ltm" : "stateless"}`,
+        profile.id,
+        snapshot.systemPrompt,
+        jsonText(snapshot.complaintChain),
+        jsonText(snapshot.style),
+        snapshot.situation,
+        snapshot.status,
+        "",
+        jsonText({}),
+        snapshot.currentEmotion,
+        hasLongTermMemory ? 1 : 0,
+        "annaagent-init-skill/v1",
+        env.AI_MODEL || "gpt-5-nano",
+        jsonText({ initSource: snapshot.initSource }),
+        nowIso(),
+        0
+      )
+      .run();
+  }
 
   await env.DB
     .prepare(`UPDATE counseling_sessions SET runtime_state = ?, chain_index = ? WHERE id = ?`)

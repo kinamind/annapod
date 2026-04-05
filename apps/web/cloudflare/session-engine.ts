@@ -40,11 +40,11 @@ export async function createInitialSnapshot(env: CloudflareEnv, input: {
     situation: initialized.situation,
     style: initialized.style,
     status: initialized.status,
-    sampleStatements: initialized.sampleStatements,
+    sampleStatements: [],
     complaintChain: initialized.complaintChain,
     chainIndex: 1,
     currentEmotion: initialized.currentEmotion,
-    systemPrompt: "",
+    systemPrompt: initialized.systemPrompt || "",
     conversation: [],
     llmMessages: [],
     turnCount: 0,
@@ -53,7 +53,7 @@ export async function createInitialSnapshot(env: CloudflareEnv, input: {
   };
 
   snapshot.currentEmotion = inferEmotion(snapshot);
-  snapshot.systemPrompt = buildSystemPrompt(snapshot);
+  snapshot.systemPrompt = snapshot.systemPrompt || buildSystemPrompt(snapshot);
   snapshot.initDurationMs = Date.now() - start;
   return snapshot;
 }

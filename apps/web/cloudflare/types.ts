@@ -54,6 +54,25 @@ export interface SeekerProfileRecord {
   source_id?: string | null;
 }
 
+export interface SeekerProfileCacheRecord {
+  id: string;
+  profile_id: string;
+  system_prompt: string;
+  complaint_chain: string;
+  style: string;
+  situation: string;
+  status: string;
+  event: string;
+  scales: string;
+  current_emotion?: string | null;
+  has_long_term_memory: number;
+  skill_version?: string | null;
+  source_model?: string | null;
+  init_trace?: string | null;
+  created_at: string;
+  used_count: number;
+}
+
 export interface ProfileView {
   id: string;
   age: string;
@@ -112,7 +131,7 @@ export interface SessionSnapshot {
   conversation: ConversationMessage[];
   llmMessages: LlmMessage[];
   turnCount: number;
-  initSource: "fresh" | "resume" | "llm" | "heuristic_fallback";
+  initSource: "fresh" | "resume" | "cache" | "llm" | "heuristic_fallback";
   initDurationMs: number;
 }
 
