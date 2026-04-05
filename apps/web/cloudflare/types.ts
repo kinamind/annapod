@@ -112,7 +112,7 @@ export interface SessionSnapshot {
   conversation: ConversationMessage[];
   llmMessages: LlmMessage[];
   turnCount: number;
-  initSource: "fresh" | "resume";
+  initSource: "fresh" | "resume" | "llm" | "heuristic_fallback";
   initDurationMs: number;
 }
 

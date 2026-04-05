@@ -13,17 +13,24 @@ export async function chatCompletion(
   messages: LlmMessage[],
   options?: { temperature?: number }
 ) {
+  const model = env.AI_MODEL || "gpt-5-nano";
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+  };
+
+  // GPT-5 family rejects custom temperature values in this API shape.
+  if (typeof options?.temperature === "number" && !/^gpt-5(?:-|$)/.test(model)) {
+    body.temperature = options.temperature;
+  }
+
   const response = await fetch(`${getChatBaseUrl(env)}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${env.AI_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: env.AI_MODEL || "gpt-5-nano",
-      messages,
-      temperature: options?.temperature ?? 0.7,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

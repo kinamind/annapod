@@ -130,7 +130,7 @@ async function startSession(request: Request, env: CloudflareEnv) {
     .bind(sessionId, userId, profile.id, sessionGroupId, hasLongTermMemory ? 1 : 0, sessionNumber, nowIso())
     .run();
 
-  const snapshot = createInitialSnapshot({
+  const snapshot = await createInitialSnapshot(env, {
     sessionId,
     userId,
     profileId: profile.id,
@@ -213,7 +213,21 @@ async function endSession(request: Request, env: CloudflareEnv) {
   const snapshot = safeJsonParse<SessionSnapshot | null>(session.runtime_state, null);
   if (!snapshot) return errorResponse("Session 状态不存在", 404);
 
-  const evaluation = await evaluateSession(env, snapshot);
+  const counselorTurns = snapshot.conversation.filter((item) => item.role === "Counselor").length;
+  const seekerTurns = snapshot.conversation.filter((item) => item.role === "Seeker").length;
+  if (!counselorTurns || !seekerTurns || snapshot.turnCount < 1) {
+    return errorResponse("当前没有可评估的有效咨询对话，请先完成至少一轮咨访互动。", 400);
+  }
+
+  let evaluation;
+  try {
+    evaluation = await evaluateSession(env, snapshot);
+  } catch (error: unknown) {
+    return errorResponse(
+      error instanceof Error ? error.message : "会话评估失败，请稍后重试。",
+      503
+    );
+  }
   const endedAt = nowIso();
   const durationSeconds = Math.max(1, Math.floor((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000));
 

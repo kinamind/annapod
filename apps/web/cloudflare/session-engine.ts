@@ -1,19 +1,15 @@
 import { queryLongTermMemory } from "./memory";
 import {
   buildSystemPrompt,
-  createComplaintChain,
-  createSituation,
-  createStatus,
-  createStyle,
   generateSeekerReply,
   inferEmotion,
+  initializeProfileState,
   needsLongTermMemory,
-  sampleStatements,
   shouldAdvanceComplaint,
 } from "./simulator";
 import type { CloudflareEnv, ConversationMessage, SessionSnapshot } from "./types";
 
-export function createInitialSnapshot(input: {
+export async function createInitialSnapshot(env: CloudflareEnv, input: {
   sessionId: string;
   userId: string;
   profileId: string;
@@ -24,7 +20,13 @@ export function createInitialSnapshot(input: {
   previousConversations: ConversationMessage[];
 }) {
   const start = Date.now();
-  const complaintChain = createComplaintChain(input.profile);
+  const initialized = await initializeProfileState(
+    env,
+    input.profile,
+    input.report,
+    input.previousConversations,
+    input.hasLongTermMemory
+  );
 
   const snapshot: SessionSnapshot = {
     sessionId: input.sessionId,
@@ -35,18 +37,18 @@ export function createInitialSnapshot(input: {
     profile: input.profile,
     report: input.report,
     previousConversations: input.previousConversations,
-    situation: createSituation(input.profile),
-    style: createStyle(input.previousConversations),
-    status: createStatus(input.profile, input.report),
-    sampleStatements: sampleStatements(input.previousConversations),
-    complaintChain,
+    situation: initialized.situation,
+    style: initialized.style,
+    status: initialized.status,
+    sampleStatements: initialized.sampleStatements,
+    complaintChain: initialized.complaintChain,
     chainIndex: 1,
-    currentEmotion: "confusion",
+    currentEmotion: initialized.currentEmotion,
     systemPrompt: "",
     conversation: [],
     llmMessages: [],
     turnCount: 0,
-    initSource: "fresh",
+    initSource: initialized.initSource,
     initDurationMs: 0,
   };
 

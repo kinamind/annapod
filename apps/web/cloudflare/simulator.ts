@@ -2,6 +2,16 @@ import { EVALUATION_DIMENSIONS } from "./constants";
 import { chatCompletion, tryParseJson } from "./llm";
 import type { CloudflareEnv, ComplaintStage, ConversationMessage, EvaluationResult, SessionSnapshot } from "./types";
 
+interface InitializationDraft {
+  situation?: string;
+  status?: string;
+  style?: string[];
+  sample_statements?: string[];
+  complaint_chain?: string[];
+  current_emotion?: string;
+  init_source?: "llm" | "heuristic_fallback";
+}
+
 function splitSymptoms(symptoms: string) {
   return symptoms
     .split(/[;,；、]/)
@@ -16,6 +26,64 @@ export function createComplaintChain(profile: SessionSnapshot["profile"]): Compl
     { stage: 2, content: `开始触及「${symptom}」背后的触发事件、人际处境或压力来源。` },
     { stage: 3, content: `逐步暴露更深层的担心、失控感或未被满足的需要。` },
   ];
+}
+
+function buildFallbackInitialization(
+  profile: SessionSnapshot["profile"],
+  report: Record<string, unknown>,
+  previousConversations: ConversationMessage[]
+) {
+  return {
+    situation: createSituation(profile),
+    status: createStatus(profile, report),
+    style: createStyle(previousConversations),
+    sampleStatements: sampleStatements(previousConversations),
+    complaintChain: createComplaintChain(profile),
+    currentEmotion: "confusion",
+    initSource: "heuristic_fallback" as const,
+  };
+}
+
+export async function initializeProfileState(
+  env: CloudflareEnv,
+  profile: SessionSnapshot["profile"],
+  report: Record<string, unknown>,
+  previousConversations: ConversationMessage[],
+  hasLongTermMemory: boolean
+) {
+  const fallback = buildFallbackInitialization(profile, report, previousConversations);
+  const previousDialogue = previousConversations
+    .slice(-8)
+    .map((item) => `${item.role}: ${item.content}`)
+    .join("\n");
+
+  const prompt = `你在执行 AnnaAgent 风格的来访者首次实例化。请基于来访者画像、案例报告和既有对话样本，构建一个适合首次会话启动的内部状态。\n\n要求：\n1. 结果必须贴合画像与案例，不要写成咨询师视角。\n2. complaint_chain 需要体现从表层主诉到更深层担忧的递进。\n3. style 只写说话风格，不写建议。\n4. sample_statements 尽量贴近既有来访者口吻。\n5. 如果开启长期记忆，可以把既往疗程对当前状态的影响整合进 status。\n6. 严格输出 JSON，不要附加解释。\n\n输出 JSON 结构：\n{\n  "situation": "2到4句，描述当前触发处境",\n  "status": "2到4句，描述当前心理状态",\n  "style": ["...", "...", "..."],\n  "sample_statements": ["...", "..."],\n  "complaint_chain": ["第一阶段主诉", "第二阶段主诉", "第三阶段主诉"],\n  "current_emotion": "confusion|sadness|nervousness|anger|fear|shame|hopelessness"\n}\n\n来访者画像：\n${JSON.stringify(profile, null, 2)}\n\n案例报告：\n${JSON.stringify(report, null, 2)}\n\n既有对话样本：\n${previousDialogue || "无"}\n\n长期记忆模式：${hasLongTermMemory ? "开启" : "关闭"}`;
+
+  try {
+    const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
+    const draft = tryParseJson<InitializationDraft>(text, {});
+    const complaintChain = Array.isArray(draft.complaint_chain)
+      ? draft.complaint_chain
+          .map((item, index) => ({ stage: index + 1, content: String(item).trim() }))
+          .filter((item) => item.content)
+      : [];
+
+    return {
+      situation: draft.situation?.trim() || fallback.situation,
+      status: draft.status?.trim() || fallback.status,
+      style: Array.isArray(draft.style) && draft.style.length
+        ? draft.style.map((item) => String(item).trim()).filter(Boolean).slice(0, 5)
+        : fallback.style,
+      sampleStatements: Array.isArray(draft.sample_statements) && draft.sample_statements.length
+        ? draft.sample_statements.map((item) => String(item).trim()).filter(Boolean).slice(0, 3)
+        : fallback.sampleStatements,
+      complaintChain: complaintChain.length >= 3 ? complaintChain : fallback.complaintChain,
+      currentEmotion: draft.current_emotion?.trim() || fallback.currentEmotion,
+      initSource: "llm" as const,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 export function createSituation(profile: SessionSnapshot["profile"]) {
@@ -141,6 +209,12 @@ function fallbackEvaluation(): EvaluationResult {
 }
 
 export async function evaluateSession(env: CloudflareEnv, snapshot: SessionSnapshot) {
+  const counselorTurns = snapshot.conversation.filter((item) => item.role === "Counselor").length;
+  const seekerTurns = snapshot.conversation.filter((item) => item.role === "Seeker").length;
+  if (!counselorTurns || !seekerTurns) {
+    throw new Error("当前没有可评估的有效咨询对话，请先完成至少一轮咨访互动。");
+  }
+
   const dialogue = snapshot.conversation
     .map((item) => `${item.role === "Counselor" ? "咨询师" : "来访者"}: ${item.content}`)
     .join("\n");
@@ -150,23 +224,19 @@ export async function evaluateSession(env: CloudflareEnv, snapshot: SessionSnaps
 
   const prompt = `你是一位资深心理咨询督导师，请对以下咨询对话进行评估。\n\n评估维度:\n${dimensions}\n\n来访者背景:\n${snapshot.profile.gender}，${snapshot.profile.age}岁，${snapshot.profile.occupation}，症状：${snapshot.profile.symptoms}\n\n咨询对话:\n${dialogue}\n\n请严格输出 JSON，结构如下：\n{\n  "overall_score": 0-100,\n  "dimension_scores": {"empathy":0,"active_listening":0,"questioning":0,"reflection":0,"confrontation":0,"goal_setting":0,"crisis_handling":0,"theoretical_application":0},\n  "mistakes": [{"type":"questioning","description":"...","severity":"low","suggestion":"...","conversation_turn":1}],\n  "strengths": ["..."],\n  "feedback": "...",\n  "tips": ["..."]\n}`;
 
-  try {
-    const text = await chatCompletion(env, [{ role: "user", content: prompt }], { temperature: 0.2 });
-    const parsed = tryParseJson<EvaluationResult>(text, fallbackEvaluation());
-    return {
-      ...fallbackEvaluation(),
-      ...parsed,
-      dimension_scores: {
-        ...fallbackEvaluation().dimension_scores,
-        ...(parsed.dimension_scores || {}),
-      },
-      overall_score: Number(parsed.overall_score || 60),
-      mistakes: Array.isArray(parsed.mistakes) ? parsed.mistakes : [],
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : fallbackEvaluation().strengths,
-      tips: Array.isArray(parsed.tips) ? parsed.tips : fallbackEvaluation().tips,
-      feedback: typeof parsed.feedback === "string" ? parsed.feedback : fallbackEvaluation().feedback,
-    };
-  } catch {
-    return fallbackEvaluation();
-  }
+  const text = await chatCompletion(env, [{ role: "user", content: prompt }], { temperature: 0.2 });
+  const parsed = tryParseJson<EvaluationResult>(text, fallbackEvaluation());
+  return {
+    ...fallbackEvaluation(),
+    ...parsed,
+    dimension_scores: {
+      ...fallbackEvaluation().dimension_scores,
+      ...(parsed.dimension_scores || {}),
+    },
+    overall_score: Number(parsed.overall_score || 60),
+    mistakes: Array.isArray(parsed.mistakes) ? parsed.mistakes : [],
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : fallbackEvaluation().strengths,
+    tips: Array.isArray(parsed.tips) ? parsed.tips : fallbackEvaluation().tips,
+    feedback: typeof parsed.feedback === "string" ? parsed.feedback : fallbackEvaluation().feedback,
+  };
 }
