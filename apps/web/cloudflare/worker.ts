@@ -53,7 +53,10 @@ function snapshotFromCache(
     situation: cache.situation,
     style: safeJsonParse(cache.style, []),
     status: cache.status,
-    sampleStatements: [],
+    sampleStatements: input.previousConversations
+      .filter((item) => item.role === "Seeker")
+      .slice(0, 3)
+      .map((item) => item.content),
     complaintChain: safeJsonParse(cache.complaint_chain, []),
     chainIndex: 1,
     currentEmotion: cache.current_emotion || "confusion",
@@ -65,6 +68,9 @@ function snapshotFromCache(
     initDurationMs: 0,
   };
   snapshot.currentEmotion = inferEmotion(snapshot);
+  if (!snapshot.systemPrompt || !snapshot.systemPrompt.includes("## Example of statement")) {
+    snapshot.systemPrompt = buildSystemPrompt(snapshot);
+  }
   return snapshot;
 }
 

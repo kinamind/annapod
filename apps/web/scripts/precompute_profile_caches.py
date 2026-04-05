@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = Path(
     "/Users/wangm/Desktop/AnnaAgent/AnnaAgent Git Code/seeker_bank/CPsyCounS-3134.json"
 )
-SKILL_PATH = ROOT / "cloudflare" / "skills" / "annaagent-initialization-skill.md"
+SKILL_PATH = ROOT.parents[0] / "local-skills" / "annaagent-initialization" / "SKILL.md"
 
 
 def iso_now() -> str:
@@ -64,6 +64,15 @@ ISSUE_RULES = [
     ("丧失与哀伤", ["丧偶", "去世", "死亡", "哀伤", "悲伤"]),
 ]
 
+GROUP_RULES = [
+    ("elderly", ["退休", "老年", "丧偶", "养老"]),
+    ("adolescent", ["高中", "初中", "青春期", "高考", "中学"]),
+    ("college", ["大学生", "研究生", "考研", "保研", "宿舍", "留学", "大专学生"]),
+    ("female", ["女性", "容貌焦虑", "月经", "生育"]),
+    ("family", ["婚姻", "夫妻", "亲子", "家人", "母亲", "父亲", "家庭"]),
+    ("workplace", ["工作", "职场", "导师", "实习", "公司", "职业"]),
+]
+
 
 ADVANCED_MARKERS = ["自杀", "自残", "危机", "ptsd", "创伤后应激"]
 INTERMEDIATE_MARKERS = [
@@ -88,6 +97,28 @@ def classify_issue_tags(record: dict) -> str:
         if any(keyword.lower() in text for keyword in keywords):
             issues.append(issue)
     return ",".join(issues[:4]) if issues else "一般心理问题"
+
+
+def classify_group_tag(record: dict) -> str:
+    blob = json.dumps(record.get("portrait", {}), ensure_ascii=False)
+    blob += json.dumps(record.get("report", {}), ensure_ascii=False)
+    text = blob.lower()
+    age = parse_age(str(record.get("portrait", {}).get("age", "")))
+    occupation = str(record.get("portrait", {}).get("occupation", ""))
+
+    if "大学生" in occupation or "研究生" in occupation:
+        return "college"
+    if "学生" in occupation and 18 <= age <= 25:
+        return "college"
+    if "学生" in occupation and age < 18:
+        return "adolescent"
+    if age >= 65:
+        return "elderly"
+
+    for group, keywords in GROUP_RULES:
+        if any(keyword.lower() in text for keyword in keywords):
+            return group
+    return "general"
 
 
 def classify_difficulty(record: dict) -> str:
@@ -230,7 +261,7 @@ def build_profile_sql(record: dict) -> str:
                 sql_quote(str(portrait.get("occupation", ""))),
                 sql_quote(str(portrait.get("marital_status", ""))),
                 sql_quote(str(portrait.get("symptoms", ""))),
-                sql_quote("college"),
+                sql_quote(classify_group_tag(record)),
                 sql_quote(classify_difficulty(record)),
                 sql_quote(classify_issue_tags(record)),
                 sql_quote(json.dumps(record["report"], ensure_ascii=False)),
@@ -307,14 +338,24 @@ def main():
         default="",
         help="Path to a JSON array of manually generated init results",
     )
+    parser.add_argument(
+        "--use-all-records",
+        action="store_true",
+        help="Use all records from the provided dataset file instead of college-priority selection",
+    )
     args = parser.parse_args()
 
     dataset = json.loads(Path(args.dataset).read_text())
 
-    prioritized = [row for row in dataset if is_college_priority(row)]
-    selected = prioritized[: args.limit]
-    if len(selected) < args.limit:
-        raise SystemExit(f"not enough prioritized samples: {len(selected)}")
+    if args.use_all_records:
+        selected = dataset[: args.limit]
+        if len(selected) < args.limit:
+            raise SystemExit(f"not enough records in dataset: {len(selected)}")
+    else:
+        prioritized = [row for row in dataset if is_college_priority(row)]
+        selected = prioritized[: args.limit]
+        if len(selected) < args.limit:
+            raise SystemExit(f"not enough prioritized samples: {len(selected)}")
 
     generated_rows = []
     if args.manual_generated:

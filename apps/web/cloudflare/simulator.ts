@@ -7,6 +7,7 @@ interface InitializationDraft {
   situation?: string;
   status?: string;
   style?: string[];
+  sample_statements?: string[];
   previous_scales?: Record<string, string[]>;
   current_scales?: Record<string, string[]>;
   complaint_chain?: string[];
@@ -42,7 +43,7 @@ function buildFallbackInitialization(
     situation: createSituation(profile),
     status: createStatus(profile, report),
     style: createStyle(previousConversations),
-    sampleStatements: [],
+    sampleStatements: sampleStatements(previousConversations),
     complaintChain: createComplaintChain(profile),
     scales: {},
     currentEmotion: "confusion",
@@ -83,7 +84,9 @@ export async function initializeProfileState(
       style: Array.isArray(draft.style) && draft.style.length
         ? draft.style.map((item) => String(item).trim()).filter(Boolean).slice(0, 5)
         : fallback.style,
-      sampleStatements: [],
+      sampleStatements: Array.isArray(draft.sample_statements) && draft.sample_statements.length
+        ? draft.sample_statements.map((item) => String(item).trim()).filter(Boolean).slice(0, 3)
+        : fallback.sampleStatements,
       complaintChain: complaintChain.length >= 3 ? complaintChain : fallback.complaintChain,
       scales: {
         ...(draft.previous_scales || {}),
@@ -166,6 +169,9 @@ ${snapshot.situation}
 
 ## Status
 ${snapshot.status}
+
+## Example of statement
+${snapshot.sampleStatements.join("\n")}
 
 ## Characteristics of speaking style
 - ${snapshot.style.join("\n- ")}
