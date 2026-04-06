@@ -147,44 +147,60 @@ function UserSessionsList({ groupId }: { groupId?: string }) {
     );
   }
 
+  const activeSessions = sessions.filter((ses) => ses.status !== "completed");
+  const completedSessions = sessions.filter((ses) => ses.status === "completed");
+
+  const renderSessionCard = (ses: (typeof sessions)[number]) => (
+    <Card key={ses.id} className="hover:shadow-md transition">
+      <CardContent className="p-4 flex items-center justify-between">
+        <div className="space-y-1">
+          <div className="font-medium flex items-center gap-2">
+            {ses.profile_summary}
+            <Badge variant="outline" className={ses.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}>
+              {ses.status === "completed" ? "Completed" : "Active"}
+            </Badge>
+          </div>
+          <div className="text-sm text-muted-foreground flex gap-4 flex-wrap">
+            <span>{new Date(ses.started_at).toLocaleString()}</span>
+            <span>Turns: {ses.turn_count}</span>
+            {ses.score !== null && ses.score !== undefined && (
+              <span className="text-indigo-600 font-medium">Score: {ses.score.toFixed(1)}</span>
+            )}
+          </div>
+        </div>
+        <div>
+          <Button
+            variant={ses.status === "completed" ? "outline" : "default"}
+            onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(ses.id)}`)}
+          >
+            {ses.status === "completed" ? (
+              <><Eye className="h-4 w-4 mr-2" /> View</>
+            ) : (
+              <><PlaySquare className="h-4 w-4 mr-2" /> Continue</>
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
-      <div className="space-y-4">
+      <div className="space-y-6">
       {groupId && (
         <div className="text-sm text-muted-foreground">当前正在查看同一长期记忆分组下的历史会话。</div>
       )}
-      {sessions.map((ses) => (
-        <Card key={ses.id} className="hover:shadow-md transition">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="font-medium flex items-center gap-2">
-                {ses.profile_summary}
-                <Badge variant="outline" className={ses.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}>
-                  {ses.status === "completed" ? "Completed" : "Active"}
-                </Badge>
-              </div>
-              <div className="text-sm text-muted-foreground flex gap-4">
-                <span>{new Date(ses.started_at).toLocaleString()}</span>
-                <span>Turns: {ses.turn_count}</span>
-                {ses.score !== null && ses.score !== undefined && (
-                  <span className="text-indigo-600 font-medium">Score: {ses.score.toFixed(1)}</span>
-                )}
-              </div>
-            </div>
-            <div>
-              <Button 
-                variant={ses.status === "completed" ? "outline" : "default"}
-                onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(ses.id)}`)}
-              >
-                {ses.status === "completed" ? (
-                  <><Eye className="h-4 w-4 mr-2" /> View</>
-                ) : (
-                  <><PlaySquare className="h-4 w-4 mr-2" /> Continue</>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+      {activeSessions.length > 0 && (
+        <div className="space-y-4">
+          <div className="text-sm font-medium text-muted-foreground">进行中的咨询</div>
+          {activeSessions.map(renderSessionCard)}
+        </div>
+      )}
+      {completedSessions.length > 0 && (
+        <div className="space-y-4">
+          <div className="text-sm font-medium text-muted-foreground">已完成的咨询</div>
+          {completedSessions.map(renderSessionCard)}
+        </div>
+      )}
     </div>
   );
 }

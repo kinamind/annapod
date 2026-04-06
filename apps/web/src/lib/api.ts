@@ -162,6 +162,9 @@ export const simulator = {
       status: string;
       evaluation?: Record<string, unknown>;
       score?: number;
+      current_emotion?: string;
+      complaint_chain?: Array<{ stage: number; content: string }>;
+      current_complaint_stage?: number;
     }>(`/api/v1/simulator/sessions/${sessionId}`);
   },
 

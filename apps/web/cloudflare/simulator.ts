@@ -1,6 +1,7 @@
 import { EVALUATION_DIMENSIONS } from "./constants";
 import { chatCompletion, tryParseJson } from "./llm";
-import type { CloudflareEnv, ComplaintStage, ConversationMessage, EvaluationResult, SessionSnapshot } from "./types";
+import { GO_EMOTIONS } from "./types";
+import type { CloudflareEnv, ComplaintStage, ConversationMessage, EvaluationResult, GoEmotion, SessionSnapshot } from "./types";
 
 interface InitializationDraft {
   event?: string;
@@ -26,6 +27,42 @@ function splitSymptoms(symptoms: string) {
 
 function patientInfo(profile: SessionSnapshot["profile"]) {
   return `### 患者信息\n年龄：${profile.age}\n性别：${profile.gender}\n职业：${profile.occupation}\n婚姻状况：${profile.marital_status}\n症状：${profile.symptoms}`;
+}
+
+const PERTURBATION_MAP: Record<GoEmotion, GoEmotion[]> = {
+  admiration: ["approval", "gratitude"],
+  amusement: ["joy", "surprise"],
+  anger: ["annoyance", "disapproval"],
+  annoyance: ["anger", "disapproval"],
+  approval: ["admiration", "optimism"],
+  caring: ["love", "gratitude"],
+  confusion: ["curiosity", "realization"],
+  curiosity: ["confusion", "realization"],
+  desire: ["love", "optimism"],
+  disappointment: ["sadness", "remorse"],
+  disapproval: ["annoyance", "anger"],
+  disgust: ["disapproval", "anger"],
+  embarrassment: ["remorse", "nervousness"],
+  excitement: ["joy", "surprise"],
+  fear: ["nervousness", "confusion"],
+  gratitude: ["caring", "admiration"],
+  grief: ["sadness", "remorse"],
+  joy: ["optimism", "relief"],
+  love: ["caring", "desire"],
+  nervousness: ["fear", "confusion"],
+  optimism: ["approval", "joy"],
+  pride: ["approval", "realization"],
+  realization: ["confusion", "relief"],
+  relief: ["joy", "optimism"],
+  remorse: ["embarrassment", "sadness"],
+  sadness: ["grief", "disappointment"],
+  surprise: ["confusion", "curiosity"],
+  neutral: ["confusion", "sadness"],
+};
+
+function perturbEmotion(emotion: GoEmotion): GoEmotion {
+  const candidates = PERTURBATION_MAP[emotion] || [emotion];
+  return candidates[Math.floor(Math.random() * candidates.length)] || emotion;
 }
 
 function dialogueHistory(conversation: ConversationMessage[]) {
@@ -154,18 +191,11 @@ export async function emotionModulation(
   profile: SessionSnapshot["profile"],
   conversation: ConversationMessage[]
 ) {
-  const prompt = `### 任务\n根据患者情况及咨访对话历史记录推测患者下一句话最可能的情绪。\n${patientInfo(profile)}\n### 对话记录\n${dialogueHistory(conversation)}`;
+  const prompt = `### 任务\n根据患者情况及咨访对话历史记录推测患者下一句话最可能的情绪。\n\n### 输出要求\n必须严格使用以下JSON格式响应：\n{"emotion":"<GoEmotions标准类别>"}\n\n可选类别：${GO_EMOTIONS.join(", ")}\n\n${patientInfo(profile)}\n### 对话记录\n${dialogueHistory(conversation)}`;
   const text = await chatCompletion(env, [{ role: "user", content: prompt }]);
-  const lowered = text.toLowerCase();
-  const candidates = [
-    "admiration", "amusement", "anger", "annoyance", "approval", "caring",
-    "confusion", "curiosity", "desire", "disappointment", "disapproval",
-    "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief",
-    "joy", "love", "nervousness", "optimism", "pride", "realization",
-    "relief", "remorse", "sadness", "surprise", "neutral"
-  ];
-  const matched = candidates.find((emotion) => lowered.includes(emotion));
-  return matched || inferEmotion({
+  const parsed = tryParseJson<{ emotion?: string }>(text, {});
+  const matched = GO_EMOTIONS.find((emotion) => parsed.emotion === emotion || text.toLowerCase().includes(emotion));
+  const baseEmotion = matched || inferEmotion({
     sessionId: "",
     userId: "",
     profileId: "",
@@ -187,6 +217,7 @@ export async function emotionModulation(
     initSource: "heuristic_fallback",
     initDurationMs: 0,
   });
+  return Math.random() > 0.9 ? perturbEmotion(baseEmotion as GoEmotion) : (baseEmotion as GoEmotion);
 }
 
 export function shouldAdvanceComplaint(snapshot: SessionSnapshot, latestCounselorMessage: string) {

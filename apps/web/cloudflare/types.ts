@@ -135,6 +135,16 @@ export interface SessionSnapshot {
   initDurationMs: number;
 }
 
+export const GO_EMOTIONS = [
+  "admiration", "amusement", "anger", "annoyance", "approval", "caring",
+  "confusion", "curiosity", "desire", "disappointment", "disapproval",
+  "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief",
+  "joy", "love", "nervousness", "optimism", "pride", "realization",
+  "relief", "remorse", "sadness", "surprise", "neutral"
+] as const;
+
+export type GoEmotion = (typeof GO_EMOTIONS)[number];
+
 export interface EvaluationResult {
   overall_score: number;
   dimension_scores: Record<string, number>;

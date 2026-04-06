@@ -392,6 +392,7 @@ async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId:
   if (!userId) return errorResponse("Unauthorized", 401);
   const session = await env.DB.prepare(`SELECT * FROM counseling_sessions WHERE id = ?`).bind(sessionId).first<any>();
   if (!session || session.user_id !== userId) return errorResponse("Session 不存在", 404);
+  const runtimeState = safeJsonParse<SessionSnapshot | null>(session.runtime_state, null);
   return jsonResponse({
     id: session.id,
     profile_id: session.profile_id,
@@ -400,6 +401,9 @@ async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId:
     status: session.status,
     evaluation: safeJsonParse(session.evaluation, null),
     score: session.score ? Number(session.score) / 10 : null,
+    current_emotion: runtimeState?.currentEmotion || null,
+    complaint_chain: runtimeState?.complaintChain || [],
+    current_complaint_stage: runtimeState?.chainIndex || 1,
   });
 }
 

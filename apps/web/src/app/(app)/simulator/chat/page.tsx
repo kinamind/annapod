@@ -71,6 +71,7 @@ export default function ChatPage() {
           setTurnCount(cCount);
         }
         setSessionGroupId(data.session_group_id ?? null);
+        setCurrentEmotion(data.current_emotion ?? null);
         if (data.status === "completed") {
           setSessionEnded(true);
           const ev = data.evaluation as Record<string, string> | undefined;
