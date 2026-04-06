@@ -414,20 +414,26 @@ async function listSessions(request: Request, env: CloudflareEnv) {
   const url = new URL(request.url);
   const groupId = url.searchParams.get("group_id") || "";
   const status = url.searchParams.get("status") || "";
-  const filters = buildSqlFilters([
-    ["s.session_group_id = ?", groupId],
-    ["s.status = ?", status],
-  ]);
+  const whereClauses = ["s.user_id = ?"];
+  const values: Array<string> = [userId];
+  if (groupId) {
+    whereClauses.push("s.session_group_id = ?");
+    values.push(groupId);
+  }
+  if (status) {
+    whereClauses.push("s.status = ?");
+    values.push(status);
+  }
 
   const rows = await env.DB
     .prepare(
       `SELECT s.*, p.gender, p.age, p.occupation, p.marital_status
        FROM counseling_sessions s
        JOIN seeker_profiles p ON p.id = s.profile_id
-       WHERE s.user_id = ?${filters.clause}
+       WHERE ${whereClauses.join(" AND ")}
        ORDER BY s.started_at DESC`
     )
-    .bind(userId, ...filters.values)
+    .bind(...values)
     .all<any>();
 
   return jsonResponse(
