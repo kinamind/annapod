@@ -314,8 +314,8 @@ export async function generateSeekerReply(
 ) {
   const complaint = snapshot.complaintChain.find((item) => item.stage === snapshot.chainIndex)?.content || "表达当前困扰";
   const reminder = supplementalMemory
-    ? `当前的情绪状态是：${snapshot.currentEmotion}，当前的主诉是：${complaint}，涉及到之前疗程的信息是：${supplementalMemory}`
-    : `当前的情绪状态是：${snapshot.currentEmotion}，当前的主诉是：${complaint}`;
+    ? `你是一个有心理障碍的来访者，正在向心理咨询师求助。你不是咨询师，不能提出建议、练习、方法或计划，也不能主动引导咨询流程。你只能用第一人称继续表达自己的感受、经历、担忧和需要。当前情绪状态是：${snapshot.currentEmotion}。当前主诉认知阶段是：${complaint}。涉及之前疗程的信息是：${supplementalMemory}。如果这一轮已经自然表达完，就停下，不要额外补充建议或解决办法。`
+    : `你是一个有心理障碍的来访者，正在向心理咨询师求助。你不是咨询师，不能提出建议、练习、方法或计划，也不能主动引导咨询流程。你只能用第一人称继续表达自己的感受、经历、担忧和需要。当前情绪状态是：${snapshot.currentEmotion}。当前主诉认知阶段是：${complaint}。如果这一轮已经自然表达完，就停下，不要额外补充建议或解决办法。`;
 
   return chatCompletion(env, [
     { role: "system", content: snapshot.systemPrompt },
