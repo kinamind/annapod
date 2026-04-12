@@ -19,6 +19,12 @@ export async function chatCompletion(
     messages,
   };
 
+  // Zhipu GLM-4.5+ enables chain-of-thought by default unless explicitly disabled.
+  // For annapod's live chat-style workloads, disable it to reduce latency and avoid verbose reasoning behavior.
+  if (/^glm-4\./.test(model)) {
+    body.thinking = { type: "disabled" };
+  }
+
   // GPT-5 family rejects custom temperature values in this API shape.
   if (typeof options?.temperature === "number" && !/^gpt-5(?:-|$)/.test(model)) {
     body.temperature = options.temperature;
