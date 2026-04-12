@@ -34,6 +34,9 @@ export default function ChatPage() {
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [sessionGroupId, setSessionGroupId] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [evaluation, setEvaluation] = useState<Record<string, string> | null>(
     null
   );
@@ -41,6 +44,7 @@ export default function ChatPage() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const autoEndedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -72,6 +76,8 @@ export default function ChatPage() {
         }
         setSessionGroupId(data.session_group_id ?? null);
         setCurrentEmotion(data.current_emotion ?? null);
+        setStartedAt(data.started_at ?? null);
+        setTimeLimitSeconds(data.time_limit_seconds ?? null);
         if (data.status === "completed") {
           setSessionEnded(true);
           const ev = data.evaluation as Record<string, string> | undefined;
@@ -90,9 +96,26 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  useEffect(() => {
+    if (!startedAt || !timeLimitSeconds || sessionEnded) {
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - Date.parse(startedAt)) / 1000);
+      const next = Math.max(0, timeLimitSeconds - elapsed);
+      setRemainingSeconds(next);
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [startedAt, timeLimitSeconds, sessionEnded]);
+
   const sendMessage = async () => {
     const text = input.trim();
-    if (!sessionId || !text || isLoading || sessionEnded) return;
+    if (!sessionId || !text || isLoading || sessionEnded || (remainingSeconds !== null && remainingSeconds <= 0)) return;
 
     const userMsg: ChatMessage = {
       role: "counselor",
@@ -123,7 +146,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleEnd = async () => {
+  const handleEnd = useCallback(async (autoEnded = false) => {
     if (!sessionId || isEnding) return;
     setIsEnding(true);
     try {
@@ -134,18 +157,25 @@ export default function ChatPage() {
 
       const sysMsg: ChatMessage = {
         role: "system",
-        content: `会话已结束。${res.score ? `综合得分: ${res.score.toFixed(1)} / 10` : ""}`,
+        content: `${autoEnded ? "单次咨询时间已到，系统已自动结束。" : "会话已结束。"}${res.score ? `综合得分: ${res.score.toFixed(1)} / 10` : ""}`,
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, sysMsg]);
-      toast.success("会话已结束，评估已生成");
+      toast.success(autoEnded ? "时间到，已自动结束并生成评估" : "会话已结束，评估已生成");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "结束会话失败";
       toast.error(msg);
     } finally {
       setIsEnding(false);
     }
-  };
+  }, [sessionId, isEnding]);
+
+  useEffect(() => {
+    if (remainingSeconds === 0 && !sessionEnded && !isEnding && !autoEndedRef.current) {
+      autoEndedRef.current = true;
+      void handleEnd(true);
+    }
+  }, [remainingSeconds, sessionEnded, isEnding, handleEnd]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -180,6 +210,12 @@ export default function ChatPage() {
             <h2 className="text-sm font-semibold">模拟咨询</h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>对话轮次: {turnCount}</span>
+              {remainingSeconds !== null && (
+                <>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>剩余时间: {Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, "0")}</span>
+                </>
+              )}
               {currentEmotion && (
                 <>
                   <Separator orientation="vertical" className="h-3" />
@@ -195,7 +231,7 @@ export default function ChatPage() {
         <Button
           variant="destructive"
           size="sm"
-          onClick={handleEnd}
+          onClick={() => void handleEnd()}
           disabled={sessionEnded || isEnding}
         >
           <StopCircle className="mr-1 h-4 w-4" />
@@ -330,13 +366,13 @@ export default function ChatPage() {
               placeholder="输入您的咨询回应…（Enter 发送，Shift+Enter 换行）"
               className="min-h-[44px] max-h-[120px] resize-none"
               rows={1}
-              disabled={isLoading}
+              disabled={isLoading || (remainingSeconds !== null && remainingSeconds <= 0)}
               autoFocus
             />
             <Button
               size="icon"
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || (remainingSeconds !== null && remainingSeconds <= 0)}
               className="shrink-0 h-11 w-11"
             >
               <Send className="h-4 w-4" />

@@ -40,6 +40,8 @@ function teamSummary(row: any, membership: any) {
     profile_group_tag: row.profile_group_tag,
     profile_difficulty: row.profile_difficulty,
     profile_issue_tag: row.profile_issue_tag,
+    session_time_limit_minutes: row.session_time_limit_minutes == null ? null : Number(row.session_time_limit_minutes),
+    max_sessions_per_user: row.max_sessions_per_user == null ? null : Number(row.max_sessions_per_user),
     training_start_at: row.training_start_at,
     training_end_at: row.training_end_at,
     status: row.status,
@@ -53,6 +55,85 @@ function teamSummary(row: any, membership: any) {
     active_members: Number(row.active_members || 0),
     last_activity_at: row.last_activity_at,
   };
+}
+
+async function finalizeSession(
+  env: CloudflareEnv,
+  session: any,
+  snapshot: SessionSnapshot,
+  userId: string,
+  options?: { autoEnded?: boolean }
+) {
+  const counselorTurns = snapshot.conversation.filter((item) => item.role === "Counselor").length;
+  const seekerTurns = snapshot.conversation.filter((item) => item.role === "Seeker").length;
+  if (!counselorTurns || !seekerTurns || snapshot.turnCount < 1) {
+    return errorResponse("当前没有可评估的有效咨询对话，请先完成至少一轮咨访互动。", 400);
+  }
+
+  let evaluation;
+  try {
+    evaluation = await evaluateSession(env, snapshot);
+  } catch (error: unknown) {
+    return errorResponse(
+      error instanceof Error ? error.message : "会话评估失败，请稍后重试。",
+      503
+    );
+  }
+
+  const endedAt = nowIso();
+  const durationSeconds = Math.max(1, Math.floor((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000));
+
+  await env.DB
+    .prepare(
+      `UPDATE counseling_sessions
+       SET messages = ?, runtime_state = ?, chain_index = ?, status = 'completed', ended_at = ?, duration_seconds = ?, evaluation = ?, score = ?
+       WHERE id = ?`
+    )
+    .bind(
+      jsonText(snapshot.conversation),
+      jsonText(snapshot),
+      snapshot.chainIndex,
+      endedAt,
+      durationSeconds,
+      jsonText(evaluation),
+      evaluation.overall_score,
+      session.id
+    )
+    .run();
+
+  await env.DB
+    .prepare(
+      `INSERT OR REPLACE INTO performance_records
+       (id, user_id, session_id, overall_score, dimension_scores, mistakes, strengths, feedback, tips, difficulty, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      userId,
+      session.id,
+      evaluation.overall_score,
+      jsonText(evaluation.dimension_scores),
+      jsonText(evaluation.mistakes),
+      jsonText(evaluation.strengths),
+      evaluation.feedback,
+      jsonText(evaluation.tips),
+      snapshot.profile.difficulty || "intermediate",
+      endedAt
+    )
+    .run();
+
+  if (snapshot.hasLongTermMemory) {
+    await indexLongTermMemory(env, snapshot);
+  }
+
+  return jsonResponse({
+    session_id: session.id,
+    status: "completed",
+    evaluation,
+    score: evaluation.overall_score / 10,
+    duration_seconds: durationSeconds,
+    auto_ended: Boolean(options?.autoEnded),
+  });
 }
 
 function toProfile(record: SeekerProfileRecord): ProfileView {
@@ -202,12 +283,22 @@ async function startSession(request: Request, env: CloudflareEnv) {
   let sessionGroupId = body.session_group_id || null;
   const teamId = body.team_id || null;
   let sessionNumber = 1;
+  let team: any = null;
 
   if (teamId) {
     const membership = await getTeamMembership(env, teamId, userId);
     if (!membership) return errorResponse("无权在该团队/比赛中发起训练", 403);
-    const team = await getTeamById(env, teamId);
+    team = await getTeamById(env, teamId);
     if (!team) return errorResponse("团队/比赛不存在", 404);
+    if (team.max_sessions_per_user) {
+      const attemptsRow = await env.DB
+        .prepare(`SELECT COUNT(*) AS total FROM counseling_sessions WHERE team_id = ? AND user_id = ?`)
+        .bind(teamId, userId)
+        .first<{ total: number }>();
+      if (Number(attemptsRow?.total || 0) >= Number(team.max_sessions_per_user)) {
+        return errorResponse("你在该比赛/团队中的可用测试次数已用尽", 400);
+      }
+    }
     if (team.profile_group_tag && team.profile_group_tag !== profile.group_tag) {
       return errorResponse("该团队/比赛限定了特定来访者群体", 400);
     }
@@ -262,10 +353,20 @@ async function startSession(request: Request, env: CloudflareEnv) {
   await env.DB
     .prepare(
       `INSERT INTO counseling_sessions
-       (id, user_id, profile_id, team_id, session_group_id, has_long_term_memory, session_number, messages, chain_index, runtime_state, status, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 1, '{}', 'active', ?)`
+       (id, user_id, profile_id, team_id, session_group_id, has_long_term_memory, session_number, messages, chain_index, runtime_state, time_limit_seconds, status, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 1, '{}', ?, 'active', ?)`
     )
-    .bind(sessionId, userId, profile.id, teamId, sessionGroupId, hasLongTermMemory ? 1 : 0, sessionNumber, nowIso())
+    .bind(
+      sessionId,
+      userId,
+      profile.id,
+      teamId,
+      sessionGroupId,
+      hasLongTermMemory ? 1 : 0,
+      sessionNumber,
+      team?.session_time_limit_minutes ? Number(team.session_time_limit_minutes) * 60 : null,
+      nowIso()
+    )
     .run();
 
   const snapshotInput = {
@@ -352,6 +453,7 @@ async function startSession(request: Request, env: CloudflareEnv) {
     session_number: sessionNumber,
     init_source: snapshot.initSource,
     init_duration_ms: snapshot.initDurationMs,
+    time_limit_seconds: team?.session_time_limit_minutes ? Number(team.session_time_limit_minutes) * 60 : null,
   });
 }
 
@@ -360,9 +462,19 @@ async function chatSession(request: Request, env: CloudflareEnv) {
   if (!userId) return errorResponse("Unauthorized", 401);
 
   const body = await readJson<{ session_id: string; message: string }>(request);
-  const session = await env.DB.prepare(`SELECT * FROM counseling_sessions WHERE id = ?`).bind(body.session_id).first<{ user_id: string }>();
+  const session = await env.DB.prepare(`SELECT * FROM counseling_sessions WHERE id = ?`).bind(body.session_id).first<any>();
   if (!session) return errorResponse("Session 不存在或已结束，请重新开始", 404);
   if (session.user_id !== userId) return errorResponse("无权访问此 session", 403);
+
+  if (session.time_limit_seconds && session.status === "active") {
+    const elapsed = Math.floor((Date.now() - Date.parse(session.started_at)) / 1000);
+    if (elapsed >= Number(session.time_limit_seconds)) {
+      const expiredSnapshot = safeJsonParse<SessionSnapshot | null>(session.runtime_state, null);
+      if (!expiredSnapshot) return errorResponse("Session 状态不存在，请重新开始", 404);
+      await finalizeSession(env, session, expiredSnapshot, userId, { autoEnded: true });
+      return errorResponse("比赛单次咨询时间已到，系统已自动结束并生成评估。", 409);
+    }
+  }
 
   const fullSession = await env.DB
     .prepare(`SELECT runtime_state FROM counseling_sessions WHERE id = ?`)
@@ -397,75 +509,7 @@ async function endSession(request: Request, env: CloudflareEnv) {
 
   const snapshot = safeJsonParse<SessionSnapshot | null>(session.runtime_state, null);
   if (!snapshot) return errorResponse("Session 状态不存在", 404);
-
-  const counselorTurns = snapshot.conversation.filter((item) => item.role === "Counselor").length;
-  const seekerTurns = snapshot.conversation.filter((item) => item.role === "Seeker").length;
-  if (!counselorTurns || !seekerTurns || snapshot.turnCount < 1) {
-    return errorResponse("当前没有可评估的有效咨询对话，请先完成至少一轮咨访互动。", 400);
-  }
-
-  let evaluation;
-  try {
-    evaluation = await evaluateSession(env, snapshot);
-  } catch (error: unknown) {
-    return errorResponse(
-      error instanceof Error ? error.message : "会话评估失败，请稍后重试。",
-      503
-    );
-  }
-  const endedAt = nowIso();
-  const durationSeconds = Math.max(1, Math.floor((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000));
-
-  await env.DB
-    .prepare(
-      `UPDATE counseling_sessions
-       SET messages = ?, runtime_state = ?, chain_index = ?, status = 'completed', ended_at = ?, duration_seconds = ?, evaluation = ?, score = ?
-       WHERE id = ?`
-    )
-    .bind(
-      jsonText(snapshot.conversation),
-      jsonText(snapshot),
-      snapshot.chainIndex,
-      endedAt,
-      durationSeconds,
-      jsonText(evaluation),
-      evaluation.overall_score,
-      body.session_id
-    )
-    .run();
-
-  await env.DB
-    .prepare(
-      `INSERT OR REPLACE INTO performance_records
-       (id, user_id, session_id, overall_score, dimension_scores, mistakes, strengths, feedback, tips, difficulty, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      crypto.randomUUID(),
-      userId,
-      body.session_id,
-      evaluation.overall_score,
-      jsonText(evaluation.dimension_scores),
-      jsonText(evaluation.mistakes),
-      jsonText(evaluation.strengths),
-      evaluation.feedback,
-      jsonText(evaluation.tips),
-      snapshot.profile.difficulty || "intermediate",
-      endedAt
-    )
-    .run();
-
-  if (snapshot.hasLongTermMemory) {
-    await indexLongTermMemory(env, snapshot);
-  }
-
-  return jsonResponse({
-    session_id: body.session_id,
-    status: "completed",
-    evaluation,
-    score: evaluation.overall_score / 10,
-    duration_seconds: durationSeconds,
-  });
+  return finalizeSession(env, session, snapshot, userId);
 }
 
 async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId: string) {
@@ -477,6 +521,7 @@ async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId:
   return jsonResponse({
     id: session.id,
     profile_id: session.profile_id,
+    team_id: session.team_id,
     session_group_id: session.session_group_id,
     messages: safeJsonParse(session.messages, []),
     status: session.status,
@@ -485,6 +530,8 @@ async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId:
     current_emotion: runtimeState?.currentEmotion || null,
     complaint_chain: runtimeState?.complaintChain || [],
     current_complaint_stage: runtimeState?.chainIndex || 1,
+    started_at: session.started_at,
+    time_limit_seconds: session.time_limit_seconds == null ? null : Number(session.time_limit_seconds),
   });
 }
 
@@ -719,6 +766,8 @@ async function createTeam(request: Request, env: CloudflareEnv) {
     profile_group_tag?: string;
     profile_difficulty?: string;
     profile_issue_tag?: string;
+    session_time_limit_minutes?: number;
+    max_sessions_per_user?: number;
     training_start_at?: string;
     training_end_at?: string;
     agreement_title?: string;
@@ -738,8 +787,8 @@ async function createTeam(request: Request, env: CloudflareEnv) {
   await env.DB
     .prepare(
       `INSERT INTO teams
-       (id, kind, name, description, theme, profile_group_tag, profile_difficulty, profile_issue_tag, training_start_at, training_end_at, owner_user_id, join_code, status, agreement_title, agreement_text, agreement_version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
+       (id, kind, name, description, theme, profile_group_tag, profile_difficulty, profile_issue_tag, session_time_limit_minutes, max_sessions_per_user, training_start_at, training_end_at, owner_user_id, join_code, status, agreement_title, agreement_text, agreement_version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
     )
     .bind(
       teamId,
@@ -750,6 +799,8 @@ async function createTeam(request: Request, env: CloudflareEnv) {
       body.profile_group_tag || null,
       body.profile_difficulty || null,
       body.profile_issue_tag || null,
+      body.session_time_limit_minutes ?? null,
+      body.max_sessions_per_user ?? null,
       body.training_start_at || null,
       body.training_end_at || null,
       userId,
@@ -792,6 +843,8 @@ async function previewJoinTeam(request: Request, env: CloudflareEnv) {
     profile_group_tag: team.profile_group_tag,
     profile_difficulty: team.profile_difficulty,
     profile_issue_tag: team.profile_issue_tag,
+    session_time_limit_minutes: team.session_time_limit_minutes == null ? null : Number(team.session_time_limit_minutes),
+    max_sessions_per_user: team.max_sessions_per_user == null ? null : Number(team.max_sessions_per_user),
     training_start_at: team.training_start_at,
     training_end_at: team.training_end_at,
     agreement_title: team.agreement_title,
@@ -872,6 +925,8 @@ async function updateTeam(request: Request, env: CloudflareEnv, teamId: string) 
     profile_group_tag: body.profile_group_tag == null ? team.profile_group_tag : String(body.profile_group_tag),
     profile_difficulty: body.profile_difficulty == null ? team.profile_difficulty : String(body.profile_difficulty),
     profile_issue_tag: body.profile_issue_tag == null ? team.profile_issue_tag : String(body.profile_issue_tag),
+    session_time_limit_minutes: body.session_time_limit_minutes == null ? team.session_time_limit_minutes : Number(body.session_time_limit_minutes),
+    max_sessions_per_user: body.max_sessions_per_user == null ? team.max_sessions_per_user : Number(body.max_sessions_per_user),
     training_start_at: body.training_start_at == null ? team.training_start_at : String(body.training_start_at),
     training_end_at: body.training_end_at == null ? team.training_end_at : String(body.training_end_at),
     agreement_title: body.agreement_title == null ? team.agreement_title : String(body.agreement_title),
@@ -882,7 +937,7 @@ async function updateTeam(request: Request, env: CloudflareEnv, teamId: string) 
   await env.DB
     .prepare(
       `UPDATE teams
-       SET name = ?, description = ?, theme = ?, profile_group_tag = ?, profile_difficulty = ?, profile_issue_tag = ?, training_start_at = ?, training_end_at = ?, agreement_title = ?, agreement_text = ?, agreement_version = ?, status = ?, updated_at = ?
+       SET name = ?, description = ?, theme = ?, profile_group_tag = ?, profile_difficulty = ?, profile_issue_tag = ?, session_time_limit_minutes = ?, max_sessions_per_user = ?, training_start_at = ?, training_end_at = ?, agreement_title = ?, agreement_text = ?, agreement_version = ?, status = ?, updated_at = ?
        WHERE id = ?`
     )
     .bind(
@@ -892,6 +947,8 @@ async function updateTeam(request: Request, env: CloudflareEnv, teamId: string) 
       next.profile_group_tag,
       next.profile_difficulty,
       next.profile_issue_tag,
+      next.session_time_limit_minutes,
+      next.max_sessions_per_user,
       next.training_start_at,
       next.training_end_at,
       next.agreement_title,

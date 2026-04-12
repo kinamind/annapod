@@ -169,6 +169,8 @@ export const simulator = {
       current_emotion?: string;
       complaint_chain?: Array<{ stage: number; content: string }>;
       current_complaint_stage?: number;
+      started_at?: string;
+      time_limit_seconds?: number | null;
     }>(`/api/v1/simulator/sessions/${sessionId}`);
   },
 
@@ -210,6 +212,8 @@ export const teams = {
     profile_group_tag?: string;
     profile_difficulty?: string;
     profile_issue_tag?: string;
+    session_time_limit_minutes?: number;
+    max_sessions_per_user?: number;
     training_start_at?: string;
     training_end_at?: string;
     agreement_title?: string;
@@ -232,6 +236,8 @@ export const teams = {
     profile_group_tag: string;
     profile_difficulty: string;
     profile_issue_tag: string;
+    session_time_limit_minutes: number;
+    max_sessions_per_user: number;
     training_start_at: string;
     training_end_at: string;
     agreement_title: string;

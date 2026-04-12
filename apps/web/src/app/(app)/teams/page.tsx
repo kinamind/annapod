@@ -50,6 +50,8 @@ export default function TeamsPage() {
     profile_group_tag: "",
     profile_difficulty: "",
     profile_issue_tag: "",
+    session_time_limit_minutes: "",
+    max_sessions_per_user: "",
     training_start_at: "",
     training_end_at: "",
     agreement_title: "",
@@ -64,6 +66,8 @@ export default function TeamsPage() {
     profile_group_tag: "",
     profile_difficulty: "",
     profile_issue_tag: "",
+    session_time_limit_minutes: "",
+    max_sessions_per_user: "",
     training_start_at: "",
     training_end_at: "",
     agreement_title: "",
@@ -102,6 +106,8 @@ export default function TeamsPage() {
         profile_group_tag: teamDetail.profile_group_tag || "",
         profile_difficulty: teamDetail.profile_difficulty || "",
         profile_issue_tag: teamDetail.profile_issue_tag || "",
+        session_time_limit_minutes: teamDetail.session_time_limit_minutes == null ? "" : String(teamDetail.session_time_limit_minutes),
+        max_sessions_per_user: teamDetail.max_sessions_per_user == null ? "" : String(teamDetail.max_sessions_per_user),
         training_start_at: teamDetail.training_start_at || "",
         training_end_at: teamDetail.training_end_at || "",
         agreement_title: teamDetail.agreement_title || "",
@@ -137,6 +143,8 @@ export default function TeamsPage() {
         profile_group_tag: createForm.profile_group_tag || undefined,
         profile_difficulty: createForm.profile_difficulty || undefined,
         profile_issue_tag: createForm.profile_issue_tag || undefined,
+        session_time_limit_minutes: createForm.session_time_limit_minutes ? Number(createForm.session_time_limit_minutes) : undefined,
+        max_sessions_per_user: createForm.max_sessions_per_user ? Number(createForm.max_sessions_per_user) : undefined,
         training_start_at: createForm.training_start_at || undefined,
         training_end_at: createForm.training_end_at || undefined,
         agreement_title: createForm.agreement_title || undefined,
@@ -177,7 +185,11 @@ export default function TeamsPage() {
     if (!selectedTeamId) return;
     setLoadingAction("save-settings");
     try {
-      await teams.update(selectedTeamId, adminForm);
+      await teams.update(selectedTeamId, {
+        ...adminForm,
+        session_time_limit_minutes: adminForm.session_time_limit_minutes ? Number(adminForm.session_time_limit_minutes) : undefined,
+        max_sessions_per_user: adminForm.max_sessions_per_user ? Number(adminForm.max_sessions_per_user) : undefined,
+      });
       await Promise.all([refetchDetail(), refetchTeams()]);
       toast.success("设置已更新");
     } catch (err: unknown) {
@@ -275,6 +287,8 @@ export default function TeamsPage() {
                         <div className="text-sm text-muted-foreground">限定群体：{selectedTeam.profile_group_tag || "不限"}</div>
                         <div className="text-sm text-muted-foreground">限定难度：{selectedTeam.profile_difficulty || "不限"}</div>
                         <div className="text-sm text-muted-foreground">限定议题：{selectedTeam.profile_issue_tag || "不限"}</div>
+                        <div className="text-sm text-muted-foreground">单次时长：{selectedTeam.session_time_limit_minutes ? `${selectedTeam.session_time_limit_minutes} 分钟` : "不限"}</div>
+                        <div className="text-sm text-muted-foreground">总测试次数：{selectedTeam.max_sessions_per_user ?? "不限"}</div>
                         <div className="text-sm text-muted-foreground">描述：{selectedTeam.description || "无"}</div>
                         <div className="text-sm text-muted-foreground flex items-center gap-2">
                           <CalendarRange className="h-4 w-4" />
@@ -326,6 +340,10 @@ export default function TeamsPage() {
                               <option value="">不限议题</option>
                               {ISSUE_OPTIONS.map((issue) => <option key={issue} value={issue}>{issue}</option>)}
                             </select>
+                            <Label>单次 session 时间限制（分钟）</Label>
+                            <Input type="number" min="1" value={adminForm.session_time_limit_minutes} onChange={(e) => setAdminForm((prev) => ({ ...prev, session_time_limit_minutes: e.target.value }))} placeholder="例如 20" />
+                            <Label>每人最大测试次数</Label>
+                            <Input type="number" min="1" value={adminForm.max_sessions_per_user} onChange={(e) => setAdminForm((prev) => ({ ...prev, max_sessions_per_user: e.target.value }))} placeholder="例如 3" />
                             <Label>开始时间</Label>
                             <Input type="datetime-local" value={adminForm.training_start_at} onChange={(e) => setAdminForm((prev) => ({ ...prev, training_start_at: e.target.value }))} />
                             <Label>结束时间</Label>
@@ -455,6 +473,14 @@ export default function TeamsPage() {
                     </select>
                   </div>
                   <div className="space-y-2">
+                    <Label>单次 session 时间限制（分钟）</Label>
+                    <Input type="number" min="1" value={createForm.session_time_limit_minutes} onChange={(e) => setCreateForm((prev) => ({ ...prev, session_time_limit_minutes: e.target.value }))} placeholder="例如 20" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>每人最大测试次数</Label>
+                    <Input type="number" min="1" value={createForm.max_sessions_per_user} onChange={(e) => setCreateForm((prev) => ({ ...prev, max_sessions_per_user: e.target.value }))} placeholder="例如 3" />
+                  </div>
+                  <div className="space-y-2">
                     <Label>开始时间</Label>
                     <Input type="datetime-local" value={createForm.training_start_at} onChange={(e) => setCreateForm((prev) => ({ ...prev, training_start_at: e.target.value }))} />
                   </div>
@@ -510,6 +536,8 @@ export default function TeamsPage() {
                     <div className="text-sm text-muted-foreground">限定群体：{joinPreview.profile_group_tag || "不限"}</div>
                     <div className="text-sm text-muted-foreground">限定难度：{joinPreview.profile_difficulty || "不限"}</div>
                     <div className="text-sm text-muted-foreground">限定议题：{joinPreview.profile_issue_tag || "不限"}</div>
+                    <div className="text-sm text-muted-foreground">单次时长：{joinPreview.session_time_limit_minutes ? `${joinPreview.session_time_limit_minutes} 分钟` : "不限"}</div>
+                    <div className="text-sm text-muted-foreground">总测试次数：{joinPreview.max_sessions_per_user ?? "不限"}</div>
                     <div className="text-sm text-muted-foreground">时间：{joinPreview.training_start_at || "未设置"} - {joinPreview.training_end_at || "未设置"}</div>
                     <div className="rounded-lg border p-4 space-y-2">
                       <div className="font-medium">{joinPreview.agreement_title || "附加协议"}</div>

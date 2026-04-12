@@ -65,6 +65,7 @@ export interface StartSessionResponse {
   session_number: number;
   init_source?: string;
   init_duration_ms?: number;
+  time_limit_seconds?: number | null;
 }
 
 export interface ChatMessage {
@@ -88,6 +89,7 @@ export interface EndSessionResponse {
   evaluation?: Record<string, unknown>;
   score?: number;
   duration_seconds?: number;
+  auto_ended?: boolean;
 }
 
 export interface SessionGroup {
@@ -115,6 +117,8 @@ export interface TeamSpace {
   profile_group_tag?: string;
   profile_difficulty?: string;
   profile_issue_tag?: string;
+  session_time_limit_minutes?: number | null;
+  max_sessions_per_user?: number | null;
   training_start_at?: string;
   training_end_at?: string;
   status: string;
@@ -138,6 +142,8 @@ export interface TeamJoinPreview {
   profile_group_tag?: string;
   profile_difficulty?: string;
   profile_issue_tag?: string;
+  session_time_limit_minutes?: number | null;
+  max_sessions_per_user?: number | null;
   training_start_at?: string;
   training_end_at?: string;
   agreement_title?: string;
