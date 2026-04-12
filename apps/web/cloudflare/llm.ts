@@ -1,7 +1,7 @@
 import type { CloudflareEnv, LlmMessage } from "./types";
 
 function getChatBaseUrl(env: CloudflareEnv) {
-  return (env.AI_BASE_URL || "https://open.bigmodel.cn/api/paas/v4").replace(/\/$/, "");
+  return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
@@ -13,7 +13,43 @@ export async function chatCompletion(
   messages: LlmMessage[],
   options?: { temperature?: number }
 ) {
-  const model = env.AI_MODEL || "glm-4.7-flashx";
+  const model = env.AI_MODEL || "gpt-5.4";
+  const baseUrl = getChatBaseUrl(env);
+
+  if (/^gpt-5(?:\.|-|$)/.test(model) && /api\.openai\.com/.test(baseUrl)) {
+    const response = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        reasoning: { effort: env.AI_REASONING_EFFORT || "none" },
+        input: messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`LLM request failed: ${response.status} ${text}`);
+    }
+
+    const json = (await response.json()) as {
+      output_text?: string;
+      output?: Array<{ content?: Array<{ text?: string }> }>;
+    };
+
+    return (
+      json.output_text?.trim() ||
+      json.output?.flatMap((item) => item.content || []).map((part) => part.text || "").join("").trim() ||
+      ""
+    );
+  }
+
   const body: Record<string, unknown> = {
     model,
     messages,
@@ -30,7 +66,7 @@ export async function chatCompletion(
     body.temperature = options.temperature;
   }
 
-  const response = await fetch(`${getChatBaseUrl(env)}/chat/completions`, {
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

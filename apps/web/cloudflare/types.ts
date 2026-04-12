@@ -30,6 +30,7 @@ export interface CloudflareEnv {
   AI_API_KEY: string;
   AI_BASE_URL?: string;
   AI_MODEL?: string;
+  AI_REASONING_EFFORT?: string;
   EMBEDDING_PROVIDER?: string;
   EMBEDDING_API_KEY?: string;
   EMBEDDING_BASE_URL?: string;
