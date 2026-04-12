@@ -129,7 +129,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "auth.register.success": "注册成功！欢迎使用安娜心训舱",
     "auth.register.failed": "注册失败",
     "auth.register.agreeTerms": "我已阅读并同意《使用与研究协议》",
-    "auth.register.researchConsent": "我理解平台数据可能被用于产品改进、教学分析与研究",
     "auth.register.mustAgreeTerms": "请先同意使用与研究协议",
 
     "teams.title": "团队与比赛",
@@ -266,7 +265,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "auth.register.success": "Registration successful! Welcome to annapod",
     "auth.register.failed": "Registration failed",
     "auth.register.agreeTerms": "I have read and agree to the Terms of Use and Research Notice",
-    "auth.register.researchConsent": "I understand that platform data may be collected for product improvement, teaching analysis, and research",
     "auth.register.mustAgreeTerms": "Please agree to the terms before registering",
 
     "teams.title": "Teams & Competitions",

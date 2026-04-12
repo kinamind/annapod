@@ -28,7 +28,6 @@ export interface RegisterRequest {
   password: string;
   accepted_terms: boolean;
   accepted_terms_version: string;
-  research_consent: boolean;
 }
 
 // ─── Simulator ───────────────────────────────────

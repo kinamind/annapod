@@ -575,7 +575,6 @@ async function register(request: Request, env: CloudflareEnv) {
     password: string;
     accepted_terms: boolean;
     accepted_terms_version: string;
-    research_consent: boolean;
   }>(request);
   if (!body.accepted_terms || body.accepted_terms_version !== REGISTRATION_TERMS_VERSION) {
     return errorResponse("注册前需要同意当前版本的使用与研究协议", 400);
@@ -602,7 +601,7 @@ async function register(request: Request, env: CloudflareEnv) {
       hashed,
       body.accepted_terms_version,
       nowIso(),
-      body.research_consent ? 1 : 0,
+      1,
       nowIso(),
       nowIso()
     )

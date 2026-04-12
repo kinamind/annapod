@@ -21,7 +21,6 @@ export default function RegisterPage() {
     password: "",
     confirmPassword: "",
     acceptedTerms: false,
-    researchConsent: false,
   });
   const { register, isLoading } = useAuthStore();
   const router = useRouter();
@@ -44,7 +43,6 @@ export default function RegisterPage() {
         password: form.password,
         accepted_terms: form.acceptedTerms,
         accepted_terms_version: REGISTRATION_TERMS_VERSION,
-        research_consent: form.researchConsent,
       });
       toast.success(t("auth.register.success"));
       router.push("/dashboard");
@@ -146,15 +144,6 @@ export default function RegisterPage() {
                     查看协议
                   </Link>
                 </span>
-              </label>
-              <label className="flex items-start gap-3 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={form.researchConsent}
-                  onChange={(e) => setForm((prev) => ({ ...prev, researchConsent: e.target.checked }))}
-                  className="mt-1 h-4 w-4 rounded border-gray-300"
-                />
-                <span>{t("auth.register.researchConsent")}</span>
               </label>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
