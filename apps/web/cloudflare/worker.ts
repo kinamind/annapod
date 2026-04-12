@@ -426,7 +426,7 @@ async function startSession(request: Request, env: CloudflareEnv) {
         snapshot.currentEmotion,
         hasLongTermMemory ? 1 : 0,
         "annaagent-init-skill/v1",
-        env.AI_MODEL || "gpt-5-nano",
+        env.AI_MODEL || "glm-4.7-flashx",
         jsonText({ initSource: snapshot.initSource }),
         nowIso(),
         0

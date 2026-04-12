@@ -33,8 +33,8 @@ pnpm dev
 建议的运行时环境变量：
 
 - `AI_API_KEY`
-- `AI_BASE_URL=https://api.openai.com/v1`
-- `AI_MODEL=gpt-5-nano`
+- `AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4`
+- `AI_MODEL=glm-4.7-flashx`
 - `JWT_SECRET=<强随机字符串>`
 
 如果你把前后端都放在同一个 Pages 项目里，`NEXT_PUBLIC_API_URL` 可以不填，前端会默认走同域 `/api/v1/*`。
@@ -75,8 +75,8 @@ pnpm cf:migrate:remote
 
 建议同时确认这些普通环境变量：
 
-- `AI_BASE_URL=https://api.openai.com/v1`
-- `AI_MODEL=gpt-5-nano`
+- `AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4`
+- `AI_MODEL=glm-4.7-flashx`
 - `EMBEDDING_PROVIDER=openai_compatible`
 - `EMBEDDING_BASE_URL=https://api.openai.com/v1`
 - `EMBEDDING_MODEL=text-embedding-3-small`

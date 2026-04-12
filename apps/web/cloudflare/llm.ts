@@ -1,7 +1,7 @@
 import type { CloudflareEnv, LlmMessage } from "./types";
 
 function getChatBaseUrl(env: CloudflareEnv) {
-  return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  return (env.AI_BASE_URL || "https://open.bigmodel.cn/api/paas/v4").replace(/\/$/, "");
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
@@ -13,7 +13,7 @@ export async function chatCompletion(
   messages: LlmMessage[],
   options?: { temperature?: number }
 ) {
-  const model = env.AI_MODEL || "gpt-5-nano";
+  const model = env.AI_MODEL || "glm-4.7-flashx";
   const body: Record<string, unknown> = {
     model,
     messages,

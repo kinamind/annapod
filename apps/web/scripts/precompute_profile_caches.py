@@ -328,9 +328,10 @@ def main():
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--output-sql", default="/tmp/annapod_profile_cache_seed.sql")
     parser.add_argument("--output-json", default="/tmp/annapod_profile_cache_seed.json")
-    parser.add_argument("--model", default=os.getenv("AI_MODEL", "gpt-5-nano"))
+    parser.add_argument("--model", default=os.getenv("AI_MODEL", "glm-4.7-flashx"))
     parser.add_argument(
-        "--base-url", default=os.getenv("AI_BASE_URL", "https://api.openai.com/v1")
+        "--base-url",
+        default=os.getenv("AI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
     )
     parser.add_argument("--skill-version", default="annaagent-init-skill/v1")
     parser.add_argument(
