@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { teams } from "@/lib/api";
-import type { TeamKind, TeamMemberSummary, TeamSpace } from "@/lib/types";
+import { DIFFICULTY_LEVELS, ISSUE_OPTIONS, type TeamKind, type TeamMemberSummary, type TeamSpace } from "@/lib/types";
 import { useLocale } from "@/lib/locale";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -15,6 +15,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Users, KeyRound, Shield, CalendarRange, Copy } from "lucide-react";
+
+const GROUP_OPTIONS = [
+  { value: "", label: "不限群体" },
+  { value: "elderly", label: "老年群体" },
+  { value: "adolescent", label: "青少年" },
+  { value: "college", label: "大学生" },
+  { value: "female", label: "女性" },
+  { value: "workplace", label: "职场" },
+  { value: "family", label: "家庭相关" },
+  { value: "general", label: "综合" },
+];
 
 function TeamKindBadge({ kind }: { kind: TeamKind }) {
   return (
@@ -36,6 +47,9 @@ export default function TeamsPage() {
     name: "",
     description: "",
     theme: "",
+    profile_group_tag: "",
+    profile_difficulty: "",
+    profile_issue_tag: "",
     training_start_at: "",
     training_end_at: "",
     agreement_title: "",
@@ -47,6 +61,9 @@ export default function TeamsPage() {
   const [adminForm, setAdminForm] = useState({
     description: "",
     theme: "",
+    profile_group_tag: "",
+    profile_difficulty: "",
+    profile_issue_tag: "",
     training_start_at: "",
     training_end_at: "",
     agreement_title: "",
@@ -82,6 +99,9 @@ export default function TeamsPage() {
       setAdminForm({
         description: teamDetail.description || "",
         theme: teamDetail.theme || "",
+        profile_group_tag: teamDetail.profile_group_tag || "",
+        profile_difficulty: teamDetail.profile_difficulty || "",
+        profile_issue_tag: teamDetail.profile_issue_tag || "",
         training_start_at: teamDetail.training_start_at || "",
         training_end_at: teamDetail.training_end_at || "",
         agreement_title: teamDetail.agreement_title || "",
@@ -114,6 +134,9 @@ export default function TeamsPage() {
     try {
       const created = await teams.create({
         ...createForm,
+        profile_group_tag: createForm.profile_group_tag || undefined,
+        profile_difficulty: createForm.profile_difficulty || undefined,
+        profile_issue_tag: createForm.profile_issue_tag || undefined,
         training_start_at: createForm.training_start_at || undefined,
         training_end_at: createForm.training_end_at || undefined,
         agreement_title: createForm.agreement_title || undefined,
@@ -249,6 +272,9 @@ export default function TeamsPage() {
                       <div className="rounded-lg border p-4 space-y-2">
                         <div className="text-sm font-medium">训练信息</div>
                         <div className="text-sm text-muted-foreground">主题：{selectedTeam.theme || "未设置"}</div>
+                        <div className="text-sm text-muted-foreground">限定群体：{selectedTeam.profile_group_tag || "不限"}</div>
+                        <div className="text-sm text-muted-foreground">限定难度：{selectedTeam.profile_difficulty || "不限"}</div>
+                        <div className="text-sm text-muted-foreground">限定议题：{selectedTeam.profile_issue_tag || "不限"}</div>
                         <div className="text-sm text-muted-foreground">描述：{selectedTeam.description || "无"}</div>
                         <div className="text-sm text-muted-foreground flex items-center gap-2">
                           <CalendarRange className="h-4 w-4" />
@@ -259,6 +285,11 @@ export default function TeamsPage() {
                             <KeyRound className="h-4 w-4" /> 邀请码：<span className="font-mono text-foreground">{selectedTeam.join_code}</span>
                           </div>
                         )}
+                        <div>
+                          <Button variant="outline" size="sm" onClick={() => router.push(`/simulator?teamId=${encodeURIComponent(selectedTeam.id)}`)}>
+                            进入团队训练
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="rounded-lg border p-4 space-y-2">
@@ -279,8 +310,22 @@ export default function TeamsPage() {
                             <Textarea value={adminForm.description} onChange={(e) => setAdminForm((prev) => ({ ...prev, description: e.target.value }))} />
                           </div>
                           <div className="space-y-2">
-                            <Label>主题</Label>
+                            <Label>主题说明（可选）</Label>
                             <Input value={adminForm.theme} onChange={(e) => setAdminForm((prev) => ({ ...prev, theme: e.target.value }))} />
+                            <Label>限定来访者群体</Label>
+                            <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={adminForm.profile_group_tag} onChange={(e) => setAdminForm((prev) => ({ ...prev, profile_group_tag: e.target.value }))}>
+                              {GROUP_OPTIONS.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
+                            </select>
+                            <Label>限定训练难度</Label>
+                            <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={adminForm.profile_difficulty} onChange={(e) => setAdminForm((prev) => ({ ...prev, profile_difficulty: e.target.value }))}>
+                              <option value="">不限难度</option>
+                              {DIFFICULTY_LEVELS.map((level) => <option key={level.key} value={level.key}>{level.label}</option>)}
+                            </select>
+                            <Label>限定议题</Label>
+                            <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={adminForm.profile_issue_tag} onChange={(e) => setAdminForm((prev) => ({ ...prev, profile_issue_tag: e.target.value }))}>
+                              <option value="">不限议题</option>
+                              {ISSUE_OPTIONS.map((issue) => <option key={issue} value={issue}>{issue}</option>)}
+                            </select>
                             <Label>开始时间</Label>
                             <Input type="datetime-local" value={adminForm.training_start_at} onChange={(e) => setAdminForm((prev) => ({ ...prev, training_start_at: e.target.value }))} />
                             <Label>结束时间</Label>
@@ -384,8 +429,30 @@ export default function TeamsPage() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label>主题</Label>
+                    <Label>主题说明（可选）</Label>
                     <Input value={createForm.theme} onChange={(e) => setCreateForm((prev) => ({ ...prev, theme: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>限定来访者群体</Label>
+                    <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={createForm.profile_group_tag} onChange={(e) => setCreateForm((prev) => ({ ...prev, profile_group_tag: e.target.value }))}>
+                      {GROUP_OPTIONS.map((option) => <option key={option.value || "all"} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>限定训练难度</Label>
+                    <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={createForm.profile_difficulty} onChange={(e) => setCreateForm((prev) => ({ ...prev, profile_difficulty: e.target.value }))}>
+                      <option value="">不限难度</option>
+                      {DIFFICULTY_LEVELS.map((level) => <option key={level.key} value={level.key}>{level.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>限定议题</Label>
+                    <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={createForm.profile_issue_tag} onChange={(e) => setCreateForm((prev) => ({ ...prev, profile_issue_tag: e.target.value }))}>
+                      <option value="">不限议题</option>
+                      {ISSUE_OPTIONS.map((issue) => <option key={issue} value={issue}>{issue}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label>开始时间</Label>
@@ -440,6 +507,9 @@ export default function TeamsPage() {
                     </div>
                     <div className="text-sm text-muted-foreground">{joinPreview.description || "无描述"}</div>
                     <div className="text-sm text-muted-foreground">主题：{joinPreview.theme || "未设置"}</div>
+                    <div className="text-sm text-muted-foreground">限定群体：{joinPreview.profile_group_tag || "不限"}</div>
+                    <div className="text-sm text-muted-foreground">限定难度：{joinPreview.profile_difficulty || "不限"}</div>
+                    <div className="text-sm text-muted-foreground">限定议题：{joinPreview.profile_issue_tag || "不限"}</div>
                     <div className="text-sm text-muted-foreground">时间：{joinPreview.training_start_at || "未设置"} - {joinPreview.training_end_at || "未设置"}</div>
                     <div className="rounded-lg border p-4 space-y-2">
                       <div className="font-medium">{joinPreview.agreement_title || "附加协议"}</div>

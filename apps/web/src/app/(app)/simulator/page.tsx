@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { simulator } from "@/lib/api";
+import { simulator, teams } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -289,13 +289,26 @@ export default function SimulatorPage() {
   const router = useRouter();
   const activeTab = searchParams.get("tab") || "profiles";
   const selectedGroupId = searchParams.get("groupId") || "";
+  const selectedTeamId = searchParams.get("teamId") || "";
+
+  const { data: teamDetail } = useQuery({
+    queryKey: ["team-detail-simulator", selectedTeamId],
+    queryFn: () => teams.getById(selectedTeamId),
+    enabled: Boolean(selectedTeamId),
+  });
+
+  const effectiveGroupTag = teamDetail?.profile_group_tag || groupTag;
+  const effectiveDifficulty = teamDetail?.profile_difficulty || difficulty;
+  const effectiveIssueTag = teamDetail?.profile_issue_tag || "";
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["profiles", groupTag, difficulty, page],
+    queryKey: ["profiles", effectiveGroupTag, effectiveDifficulty, effectiveIssueTag, selectedTeamId, page],
     queryFn: () =>
       simulator.getProfiles({
-        group_tag: groupTag || undefined,
-        difficulty: difficulty || undefined,
+        group_tag: effectiveGroupTag || undefined,
+        difficulty: effectiveDifficulty || undefined,
+        issue_tag: effectiveIssueTag || undefined,
+        team_id: selectedTeamId || undefined,
         page,
         page_size: 12,
       }),
@@ -307,6 +320,7 @@ export default function SimulatorPage() {
       const res = await simulator.startSession({
         profile_id: profile.id,
         enable_long_term_memory: enableLtm,
+        team_id: selectedTeamId || undefined,
       });
       router.push(`/simulator/chat?sessionId=${encodeURIComponent(res.session_id)}`);
     } catch (err: unknown) {
@@ -342,6 +356,16 @@ export default function SimulatorPage() {
           <TabsTrigger value="sessions">{locale === "zh" ? "咨询记录" : "Sessions"}</TabsTrigger>
         </TabsList>
         <TabsContent value="profiles" className="space-y-6">
+      {teamDetail && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 text-sm text-muted-foreground space-y-1">
+            <div className="font-medium text-foreground">当前正在进行团队/比赛训练：{teamDetail.name}</div>
+            <div>
+              限定群体：{teamDetail.profile_group_tag || "不限"} · 限定难度：{teamDetail.profile_difficulty || "不限"} · 限定议题：{teamDetail.profile_issue_tag || "不限"}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <Select value={groupTag} onValueChange={(v) => { setGroupTag(!v || v === "__all__" ? "" : v); setPage(1); }}>
@@ -370,7 +394,7 @@ export default function SimulatorPage() {
           </SelectContent>
         </Select>
 
-        {(groupTag || difficulty) && (
+        {(groupTag || difficulty) && !teamDetail && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             {t("common.clearFilters")}
           </Button>

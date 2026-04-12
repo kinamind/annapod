@@ -114,12 +114,16 @@ export const simulator = {
   getProfiles(params?: {
     group_tag?: string;
     difficulty?: string;
+    issue_tag?: string;
+    team_id?: string;
     page?: number;
     page_size?: number;
   }) {
     const qs = new URLSearchParams();
     if (params?.group_tag) qs.set("group_tag", params.group_tag);
     if (params?.difficulty) qs.set("difficulty", params.difficulty);
+    if (params?.issue_tag) qs.set("issue_tag", params.issue_tag);
+    if (params?.team_id) qs.set("team_id", params.team_id);
     if (params?.page) qs.set("page", String(params.page));
     if (params?.page_size) qs.set("page_size", String(params.page_size));
     const q = qs.toString();
@@ -203,6 +207,9 @@ export const teams = {
     name: string;
     description?: string;
     theme?: string;
+    profile_group_tag?: string;
+    profile_difficulty?: string;
+    profile_issue_tag?: string;
     training_start_at?: string;
     training_end_at?: string;
     agreement_title?: string;
@@ -222,6 +229,9 @@ export const teams = {
     name: string;
     description: string;
     theme: string;
+    profile_group_tag: string;
+    profile_difficulty: string;
+    profile_issue_tag: string;
     training_start_at: string;
     training_end_at: string;
     agreement_title: string;

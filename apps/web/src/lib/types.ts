@@ -56,6 +56,7 @@ export interface StartSessionRequest {
   profile_id: string;
   enable_long_term_memory?: boolean;
   session_group_id?: string;
+  team_id?: string;
 }
 
 export interface StartSessionResponse {
@@ -112,6 +113,9 @@ export interface TeamSpace {
   name: string;
   description?: string;
   theme?: string;
+  profile_group_tag?: string;
+  profile_difficulty?: string;
+  profile_issue_tag?: string;
   training_start_at?: string;
   training_end_at?: string;
   status: string;
@@ -132,6 +136,9 @@ export interface TeamJoinPreview {
   name: string;
   description?: string;
   theme?: string;
+  profile_group_tag?: string;
+  profile_difficulty?: string;
+  profile_issue_tag?: string;
   training_start_at?: string;
   training_end_at?: string;
   agreement_title?: string;

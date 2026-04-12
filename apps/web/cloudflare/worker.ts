@@ -37,6 +37,9 @@ function teamSummary(row: any, membership: any) {
     name: row.name,
     description: row.description,
     theme: row.theme,
+    profile_group_tag: row.profile_group_tag,
+    profile_difficulty: row.profile_difficulty,
+    profile_issue_tag: row.profile_issue_tag,
     training_start_at: row.training_start_at,
     training_end_at: row.training_end_at,
     status: row.status,
@@ -129,10 +132,27 @@ async function listProfiles(request: Request, env: CloudflareEnv) {
   const pageSize = Number(url.searchParams.get("page_size") || 20);
   const groupTag = url.searchParams.get("group_tag") || "";
   const difficulty = url.searchParams.get("difficulty") || "";
+  const issueTag = url.searchParams.get("issue_tag") || "";
+  const teamId = url.searchParams.get("team_id") || "";
+
+  let effectiveGroupTag = groupTag;
+  let effectiveDifficulty = difficulty;
+  let effectiveIssueTag = issueTag;
+
+  if (teamId) {
+    const membership = await getTeamMembership(env, teamId, userId);
+    if (!membership) return errorResponse("无权访问该团队/比赛的训练范围", 403);
+    const team = await getTeamById(env, teamId);
+    if (!team) return errorResponse("团队/比赛不存在", 404);
+    effectiveGroupTag = team.profile_group_tag || effectiveGroupTag;
+    effectiveDifficulty = team.profile_difficulty || effectiveDifficulty;
+    effectiveIssueTag = team.profile_issue_tag || effectiveIssueTag;
+  }
 
   const filters = buildSqlFilters([
-    ["group_tag = ?", groupTag],
-    ["difficulty = ?", difficulty],
+    ["group_tag = ?", effectiveGroupTag],
+    ["difficulty = ?", effectiveDifficulty],
+    ["issue_tags LIKE ?", effectiveIssueTag ? `%${effectiveIssueTag}%` : ""],
   ]);
 
   const totalRow = await env.DB
@@ -173,24 +193,41 @@ async function startSession(request: Request, env: CloudflareEnv) {
   const userId = await requireUser(request, env);
   if (!userId) return errorResponse("Unauthorized", 401);
 
-  const body = await readJson<{ profile_id: string; enable_long_term_memory?: boolean; session_group_id?: string | null }>(request);
+  const body = await readJson<{ profile_id: string; enable_long_term_memory?: boolean; session_group_id?: string | null; team_id?: string | null }>(request);
   const record = await env.DB.prepare(`SELECT * FROM seeker_profiles WHERE id = ?`).bind(body.profile_id).first<SeekerProfileRecord>();
   if (!record) return errorResponse("来访者档案不存在", 404);
   const profile = toProfile(record);
   const sessionId = crypto.randomUUID();
   const hasLongTermMemory = body.enable_long_term_memory !== false;
   let sessionGroupId = body.session_group_id || null;
+  const teamId = body.team_id || null;
   let sessionNumber = 1;
+
+  if (teamId) {
+    const membership = await getTeamMembership(env, teamId, userId);
+    if (!membership) return errorResponse("无权在该团队/比赛中发起训练", 403);
+    const team = await getTeamById(env, teamId);
+    if (!team) return errorResponse("团队/比赛不存在", 404);
+    if (team.profile_group_tag && team.profile_group_tag !== profile.group_tag) {
+      return errorResponse("该团队/比赛限定了特定来访者群体", 400);
+    }
+    if (team.profile_difficulty && team.profile_difficulty !== profile.difficulty) {
+      return errorResponse("该团队/比赛限定了特定训练难度", 400);
+    }
+    if (team.profile_issue_tag && !(profile.issue_tags || "").includes(team.profile_issue_tag)) {
+      return errorResponse("该团队/比赛限定了特定议题范围", 400);
+    }
+  }
 
   if (hasLongTermMemory) {
     if (!sessionGroupId) {
       const existingGroup = await env.DB
         .prepare(
           `SELECT id FROM session_groups
-           WHERE user_id = ? AND profile_id = ? AND status = 'active'
+           WHERE user_id = ? AND profile_id = ? AND IFNULL(team_id, '') = ? AND status = 'active'
            ORDER BY updated_at DESC LIMIT 1`
         )
-        .bind(userId, profile.id)
+        .bind(userId, profile.id, teamId || "")
         .first<{ id: string }>();
 
       if (existingGroup?.id) {
@@ -199,13 +236,14 @@ async function startSession(request: Request, env: CloudflareEnv) {
         sessionGroupId = crypto.randomUUID();
         await env.DB
           .prepare(
-            `INSERT INTO session_groups (id, user_id, profile_id, title, description, session_count, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 0, 'active', ?, ?)`
+            `INSERT INTO session_groups (id, user_id, profile_id, team_id, title, description, session_count, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)`
           )
           .bind(
             sessionGroupId,
             userId,
             profile.id,
+            teamId,
             `与${profile.gender}${profile.age}岁${profile.occupation}的咨询`,
             "长期记忆咨询组",
             nowIso(),
@@ -224,10 +262,10 @@ async function startSession(request: Request, env: CloudflareEnv) {
   await env.DB
     .prepare(
       `INSERT INTO counseling_sessions
-       (id, user_id, profile_id, session_group_id, has_long_term_memory, session_number, messages, chain_index, runtime_state, status, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, '[]', 1, '{}', 'active', ?)`
+       (id, user_id, profile_id, team_id, session_group_id, has_long_term_memory, session_number, messages, chain_index, runtime_state, status, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 1, '{}', 'active', ?)`
     )
-    .bind(sessionId, userId, profile.id, sessionGroupId, hasLongTermMemory ? 1 : 0, sessionNumber, nowIso())
+    .bind(sessionId, userId, profile.id, teamId, sessionGroupId, hasLongTermMemory ? 1 : 0, sessionNumber, nowIso())
     .run();
 
   const snapshotInput = {
@@ -660,7 +698,7 @@ async function listTeams(request: Request, env: CloudflareEnv) {
        FROM teams t
        JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ? AND tm.status = 'active'
        LEFT JOIN team_members tm2 ON tm2.team_id = t.id
-       LEFT JOIN counseling_sessions s ON s.user_id = tm2.user_id
+       LEFT JOIN counseling_sessions s ON s.team_id = t.id AND s.user_id = tm2.user_id
        WHERE t.status != 'archived'
        GROUP BY t.id, tm.role
        ORDER BY t.updated_at DESC`
@@ -679,6 +717,9 @@ async function createTeam(request: Request, env: CloudflareEnv) {
     name: string;
     description?: string;
     theme?: string;
+    profile_group_tag?: string;
+    profile_difficulty?: string;
+    profile_issue_tag?: string;
     training_start_at?: string;
     training_end_at?: string;
     agreement_title?: string;
@@ -698,8 +739,8 @@ async function createTeam(request: Request, env: CloudflareEnv) {
   await env.DB
     .prepare(
       `INSERT INTO teams
-       (id, kind, name, description, theme, training_start_at, training_end_at, owner_user_id, join_code, status, agreement_title, agreement_text, agreement_version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
+       (id, kind, name, description, theme, profile_group_tag, profile_difficulty, profile_issue_tag, training_start_at, training_end_at, owner_user_id, join_code, status, agreement_title, agreement_text, agreement_version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
     )
     .bind(
       teamId,
@@ -707,6 +748,9 @@ async function createTeam(request: Request, env: CloudflareEnv) {
       body.name.trim(),
       body.description || null,
       body.theme || null,
+      body.profile_group_tag || null,
+      body.profile_difficulty || null,
+      body.profile_issue_tag || null,
       body.training_start_at || null,
       body.training_end_at || null,
       userId,
@@ -746,6 +790,9 @@ async function previewJoinTeam(request: Request, env: CloudflareEnv) {
     name: team.name,
     description: team.description,
     theme: team.theme,
+    profile_group_tag: team.profile_group_tag,
+    profile_difficulty: team.profile_difficulty,
+    profile_issue_tag: team.profile_issue_tag,
     training_start_at: team.training_start_at,
     training_end_at: team.training_end_at,
     agreement_title: team.agreement_title,
@@ -823,6 +870,9 @@ async function updateTeam(request: Request, env: CloudflareEnv, teamId: string) 
     name: body.name == null ? team.name : String(body.name),
     description: body.description == null ? team.description : String(body.description),
     theme: body.theme == null ? team.theme : String(body.theme),
+    profile_group_tag: body.profile_group_tag == null ? team.profile_group_tag : String(body.profile_group_tag),
+    profile_difficulty: body.profile_difficulty == null ? team.profile_difficulty : String(body.profile_difficulty),
+    profile_issue_tag: body.profile_issue_tag == null ? team.profile_issue_tag : String(body.profile_issue_tag),
     training_start_at: body.training_start_at == null ? team.training_start_at : String(body.training_start_at),
     training_end_at: body.training_end_at == null ? team.training_end_at : String(body.training_end_at),
     agreement_title: body.agreement_title == null ? team.agreement_title : String(body.agreement_title),
@@ -833,13 +883,16 @@ async function updateTeam(request: Request, env: CloudflareEnv, teamId: string) 
   await env.DB
     .prepare(
       `UPDATE teams
-       SET name = ?, description = ?, theme = ?, training_start_at = ?, training_end_at = ?, agreement_title = ?, agreement_text = ?, agreement_version = ?, status = ?, updated_at = ?
+       SET name = ?, description = ?, theme = ?, profile_group_tag = ?, profile_difficulty = ?, profile_issue_tag = ?, training_start_at = ?, training_end_at = ?, agreement_title = ?, agreement_text = ?, agreement_version = ?, status = ?, updated_at = ?
        WHERE id = ?`
     )
     .bind(
       next.name,
       next.description,
       next.theme,
+      next.profile_group_tag,
+      next.profile_difficulty,
+      next.profile_issue_tag,
       next.training_start_at,
       next.training_end_at,
       next.agreement_title,
@@ -881,13 +934,14 @@ async function getTeamMembers(request: Request, env: CloudflareEnv, teamId: stri
        JOIN users u ON u.id = tm.user_id
        LEFT JOIN counseling_sessions s
          ON s.user_id = tm.user_id
+        AND s.team_id = ?
         AND (? = '' OR s.started_at >= ?)
         AND (? = '' OR s.started_at <= ?)
        WHERE tm.team_id = ? AND tm.status = 'active'
        GROUP BY tm.user_id, tm.role, tm.joined_at, u.display_name, u.username, u.email
        ORDER BY CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.display_name ASC`
     )
-    .bind(start, start, end, end, teamId)
+    .bind(teamId, start, start, end, end, teamId)
     .all<any>();
 
   return jsonResponse(
