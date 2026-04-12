@@ -7,6 +7,7 @@ import {
   MessageSquare,
   BookOpen,
   TrendingUp,
+  Users,
   Eye,
   User,
   LayoutDashboard,
@@ -46,6 +47,12 @@ const navItems = [
     href: "/learning",
     icon: TrendingUp,
     descKey: "nav.learning.desc",
+  },
+  {
+    titleKey: "nav.teams",
+    href: "/teams",
+    icon: Users,
+    descKey: "nav.teams.desc",
   },
   {
     titleKey: "nav.preview",

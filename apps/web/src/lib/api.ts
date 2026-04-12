@@ -3,6 +3,7 @@
 import type {
   Token,
   User,
+  RegisterRequest,
   SeekerProfileList,
   StartSessionRequest,
   StartSessionResponse,
@@ -17,6 +18,10 @@ import type {
   GrowthCurve,
   PerformanceRecord,
   Recommendation,
+  TeamJoinPreview,
+  TeamMemberSummary,
+  TeamRole,
+  TeamSpace,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -75,12 +80,7 @@ async function request<T>(
 
 // ─── Auth ────────────────────────────────────────
 export const auth = {
-  register(data: {
-    email: string;
-    username: string;
-    display_name: string;
-    password: string;
-  }) {
+  register(data: RegisterRequest) {
     return request<Token>("/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
@@ -192,6 +192,71 @@ export const simulator = {
   },
 };
 
+// ─── Teams & Competitions ────────────────────────
+export const teams = {
+  list() {
+    return request<TeamSpace[]>("/api/v1/teams");
+  },
+
+  create(data: {
+    kind: "team" | "competition";
+    name: string;
+    description?: string;
+    theme?: string;
+    training_start_at?: string;
+    training_end_at?: string;
+    agreement_title?: string;
+    agreement_text?: string;
+  }) {
+    return request<TeamSpace>("/api/v1/teams", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getById(id: string) {
+    return request<TeamSpace>(`/api/v1/teams/${id}`);
+  },
+
+  update(id: string, data: Partial<{
+    name: string;
+    description: string;
+    theme: string;
+    training_start_at: string;
+    training_end_at: string;
+    agreement_title: string;
+    agreement_text: string;
+    status: string;
+  }>) {
+    return request<TeamSpace>(`/api/v1/teams/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  previewJoin(joinCode: string) {
+    return request<TeamJoinPreview>(`/api/v1/teams/join-preview?code=${encodeURIComponent(joinCode)}`);
+  },
+
+  join(data: { join_code: string; accepted_agreement: boolean }) {
+    return request<TeamSpace>("/api/v1/teams/join", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getMembers(id: string) {
+    return request<TeamMemberSummary[]>(`/api/v1/teams/${id}/members`);
+  },
+
+  updateMemberRole(id: string, userId: string, role: TeamRole) {
+    return request<{ ok: true }>(`/api/v1/teams/${id}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+  },
+};
+
 // ─── Knowledge Base ──────────────────────────────
 export const knowledge = {
   getDimensions() {
@@ -264,6 +329,6 @@ export const learning = {
   },
 };
 
-const api = { auth, simulator, knowledge, learning };
+const api = { auth, simulator, knowledge, learning, teams };
 
 export default api;

@@ -11,11 +11,24 @@ export interface User {
   experience_level: string;
   specialization?: string;
   is_active: boolean;
+  accepted_terms_version?: string;
+  accepted_terms_at?: string;
+  research_consent?: boolean;
 }
 
 export interface Token {
   access_token: string;
   token_type: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  username: string;
+  display_name: string;
+  password: string;
+  accepted_terms: boolean;
+  accepted_terms_version: string;
+  research_consent: boolean;
 }
 
 // ─── Simulator ───────────────────────────────────
@@ -88,6 +101,57 @@ export interface SessionGroup {
   last_started_at?: string;
   completed_sessions?: number;
   active_sessions?: number;
+}
+
+export type TeamKind = "team" | "competition";
+export type TeamRole = "owner" | "admin" | "member";
+
+export interface TeamSpace {
+  id: string;
+  kind: TeamKind;
+  name: string;
+  description?: string;
+  theme?: string;
+  training_start_at?: string;
+  training_end_at?: string;
+  status: string;
+  role: TeamRole;
+  join_code?: string;
+  can_manage: boolean;
+  agreement_title?: string;
+  agreement_text?: string;
+  agreement_version: number;
+  member_count: number;
+  active_members?: number;
+  last_activity_at?: string;
+}
+
+export interface TeamJoinPreview {
+  id: string;
+  kind: TeamKind;
+  name: string;
+  description?: string;
+  theme?: string;
+  training_start_at?: string;
+  training_end_at?: string;
+  agreement_title?: string;
+  agreement_text?: string;
+  agreement_version: number;
+  is_member: boolean;
+}
+
+export interface TeamMemberSummary {
+  user_id: string;
+  display_name: string;
+  username: string;
+  email: string;
+  role: TeamRole;
+  joined_at: string;
+  total_sessions: number;
+  completed_sessions: number;
+  active_sessions: number;
+  average_score: number | null;
+  last_activity_at?: string;
 }
 
 // ─── Knowledge Base ──────────────────────────────

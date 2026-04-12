@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useLocale } from "@/lib/locale";
+import { REGISTRATION_TERMS_VERSION } from "@/lib/policies";
 
 export default function RegisterPage() {
   const { t } = useLocale();
@@ -19,6 +20,8 @@ export default function RegisterPage() {
     display_name: "",
     password: "",
     confirmPassword: "",
+    acceptedTerms: false,
+    researchConsent: false,
   });
   const { register, isLoading } = useAuthStore();
   const router = useRouter();
@@ -29,12 +32,19 @@ export default function RegisterPage() {
       toast.error(t("auth.register.passwordMismatch"));
       return;
     }
+    if (!form.acceptedTerms) {
+      toast.error(t("auth.register.mustAgreeTerms"));
+      return;
+    }
     try {
       await register({
         email: form.email,
         username: form.username,
         display_name: form.display_name,
         password: form.password,
+        accepted_terms: form.acceptedTerms,
+        accepted_terms_version: REGISTRATION_TERMS_VERSION,
+        research_consent: form.researchConsent,
       });
       toast.success(t("auth.register.success"));
       router.push("/dashboard");
@@ -120,6 +130,32 @@ export default function RegisterPage() {
                 required
                 minLength={6}
               />
+            </div>
+            <div className="space-y-3 rounded-lg border p-4 text-sm">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={form.acceptedTerms}
+                  onChange={(e) => setForm((prev) => ({ ...prev, acceptedTerms: e.target.checked }))}
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                  required
+                />
+                <span>
+                  {t("auth.register.agreeTerms")} {" "}
+                  <Link href="/terms" className="text-primary underline" target="_blank">
+                    查看协议
+                  </Link>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={form.researchConsent}
+                  onChange={(e) => setForm((prev) => ({ ...prev, researchConsent: e.target.checked }))}
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                />
+                <span>{t("auth.register.researchConsent")}</span>
+              </label>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? t("auth.register.loading") : t("auth.register.submit")}

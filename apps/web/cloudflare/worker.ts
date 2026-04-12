@@ -9,6 +9,49 @@ import { buildSystemPrompt, evaluateSession, inferEmotion } from "./simulator";
 import type { CloudflareEnv, ProfileView, SeekerProfileCacheRecord, SeekerProfileRecord, SessionSnapshot } from "./types";
 import { buildSqlFilters, corsHeaders, errorResponse, jsonResponse, jsonText, nowIso, readForm, readJson, safeJsonParse } from "./utils";
 
+const REGISTRATION_TERMS_VERSION = "annapod-research-terms-v1";
+
+function createJoinCode() {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
+async function getTeamMembership(env: CloudflareEnv, teamId: string, userId: string) {
+  return env.DB
+    .prepare(`SELECT * FROM team_members WHERE team_id = ? AND user_id = ? AND status = 'active'`)
+    .bind(teamId, userId)
+    .first<any>();
+}
+
+function canManageTeam(role: string | null | undefined) {
+  return role === "owner" || role === "admin";
+}
+
+async function getTeamById(env: CloudflareEnv, teamId: string) {
+  return env.DB.prepare(`SELECT * FROM teams WHERE id = ?`).bind(teamId).first<any>();
+}
+
+function teamSummary(row: any, membership: any) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    description: row.description,
+    theme: row.theme,
+    training_start_at: row.training_start_at,
+    training_end_at: row.training_end_at,
+    status: row.status,
+    role: membership?.role || "member",
+    join_code: canManageTeam(membership?.role) ? row.join_code : undefined,
+    can_manage: canManageTeam(membership?.role),
+    agreement_title: row.agreement_title,
+    agreement_text: row.agreement_text,
+    agreement_version: Number(row.agreement_version || 1),
+    member_count: Number(row.member_count || 0),
+    active_members: Number(row.active_members || 0),
+    last_activity_at: row.last_activity_at,
+  };
+}
+
 function toProfile(record: SeekerProfileRecord): ProfileView {
   return {
     id: record.id,
@@ -487,7 +530,18 @@ async function listSessionGroups(request: Request, env: CloudflareEnv) {
 }
 
 async function register(request: Request, env: CloudflareEnv) {
-  const body = await readJson<{ email: string; username: string; display_name: string; password: string }>(request);
+  const body = await readJson<{
+    email: string;
+    username: string;
+    display_name: string;
+    password: string;
+    accepted_terms: boolean;
+    accepted_terms_version: string;
+    research_consent: boolean;
+  }>(request);
+  if (!body.accepted_terms || body.accepted_terms_version !== REGISTRATION_TERMS_VERSION) {
+    return errorResponse("注册前需要同意当前版本的使用与研究协议", 400);
+  }
   const existing = await env.DB
     .prepare(`SELECT id FROM users WHERE email = ? OR username = ?`)
     .bind(body.email, body.username)
@@ -499,10 +553,21 @@ async function register(request: Request, env: CloudflareEnv) {
   await env.DB
     .prepare(
       `INSERT INTO users
-       (id, email, username, display_name, hashed_password, experience_level, is_active, is_admin, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'beginner', 1, 0, ?, ?)`
+       (id, email, username, display_name, hashed_password, experience_level, is_active, is_admin, accepted_terms_version, accepted_terms_at, research_consent, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'beginner', 1, 0, ?, ?, ?, ?, ?)`
     )
-    .bind(id, body.email, body.username, body.display_name, hashed, nowIso(), nowIso())
+    .bind(
+      id,
+      body.email,
+      body.username,
+      body.display_name,
+      hashed,
+      body.accepted_terms_version,
+      nowIso(),
+      body.research_consent ? 1 : 0,
+      nowIso(),
+      nowIso()
+    )
     .run();
   const token = await signJwt(env, { sub: id });
   return jsonResponse({ access_token: token, token_type: "bearer" }, 201);
@@ -541,6 +606,9 @@ async function getMe(request: Request, env: CloudflareEnv) {
     experience_level: user.experience_level,
     specialization: user.specialization,
     is_active: Boolean(user.is_active),
+    accepted_terms_version: user.accepted_terms_version,
+    accepted_terms_at: user.accepted_terms_at,
+    research_consent: Boolean(user.research_consent),
   });
 }
 
@@ -573,7 +641,287 @@ async function updateMe(request: Request, env: CloudflareEnv) {
     username: user.username,
     ...next,
     is_active: Boolean(user.is_active),
+    accepted_terms_version: user.accepted_terms_version,
+    accepted_terms_at: user.accepted_terms_at,
+    research_consent: Boolean(user.research_consent),
   });
+}
+
+async function listTeams(request: Request, env: CloudflareEnv) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+
+  const rows = await env.DB
+    .prepare(
+      `SELECT t.*, tm.role,
+              COUNT(DISTINCT tm2.user_id) AS member_count,
+              COUNT(DISTINCT CASE WHEN tm2.status = 'active' THEN tm2.user_id END) AS active_members,
+              MAX(COALESCE(s.ended_at, s.started_at)) AS last_activity_at
+       FROM teams t
+       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ? AND tm.status = 'active'
+       LEFT JOIN team_members tm2 ON tm2.team_id = t.id
+       LEFT JOIN counseling_sessions s ON s.user_id = tm2.user_id
+       WHERE t.status != 'archived'
+       GROUP BY t.id, tm.role
+       ORDER BY t.updated_at DESC`
+    )
+    .bind(userId)
+    .all<any>();
+
+  return jsonResponse((rows.results || []).map((row) => teamSummary(row, row)));
+}
+
+async function createTeam(request: Request, env: CloudflareEnv) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const body = await readJson<{
+    kind: "team" | "competition";
+    name: string;
+    description?: string;
+    theme?: string;
+    training_start_at?: string;
+    training_end_at?: string;
+    agreement_title?: string;
+    agreement_text?: string;
+  }>(request);
+  if (!body.name?.trim()) return errorResponse("团队/比赛名称不能为空", 400);
+  if (body.kind !== "team" && body.kind !== "competition") {
+    return errorResponse("kind 必须是 team 或 competition", 400);
+  }
+
+  const teamId = crypto.randomUUID();
+  const memberId = crypto.randomUUID();
+  const joinCode = createJoinCode();
+  const agreementVersion = body.agreement_text?.trim() ? 1 : 0;
+  const now = nowIso();
+
+  await env.DB
+    .prepare(
+      `INSERT INTO teams
+       (id, kind, name, description, theme, training_start_at, training_end_at, owner_user_id, join_code, status, agreement_title, agreement_text, agreement_version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      teamId,
+      body.kind,
+      body.name.trim(),
+      body.description || null,
+      body.theme || null,
+      body.training_start_at || null,
+      body.training_end_at || null,
+      userId,
+      joinCode,
+      body.agreement_title || null,
+      body.agreement_text || null,
+      agreementVersion,
+      now,
+      now
+    )
+    .run();
+
+  await env.DB
+    .prepare(
+      `INSERT INTO team_members
+       (id, team_id, user_id, role, status, accepted_agreement_version, accepted_agreement_at, joined_at)
+       VALUES (?, ?, ?, 'owner', 'active', ?, ?, ?)`
+    )
+    .bind(memberId, teamId, userId, agreementVersion || null, agreementVersion ? now : null, now)
+    .run();
+
+  const team = await getTeamById(env, teamId);
+  return jsonResponse(teamSummary({ ...team, member_count: 1, active_members: 1 }, { role: "owner" }), 201);
+}
+
+async function previewJoinTeam(request: Request, env: CloudflareEnv) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const code = new URL(request.url).searchParams.get("code")?.trim().toUpperCase();
+  if (!code) return errorResponse("请输入邀请码", 400);
+  const team = await env.DB.prepare(`SELECT * FROM teams WHERE join_code = ? AND status = 'active'`).bind(code).first<any>();
+  if (!team) return errorResponse("未找到对应的团队或比赛", 404);
+  const membership = await getTeamMembership(env, team.id, userId);
+  return jsonResponse({
+    id: team.id,
+    kind: team.kind,
+    name: team.name,
+    description: team.description,
+    theme: team.theme,
+    training_start_at: team.training_start_at,
+    training_end_at: team.training_end_at,
+    agreement_title: team.agreement_title,
+    agreement_text: team.agreement_text,
+    agreement_version: Number(team.agreement_version || 0),
+    is_member: Boolean(membership),
+  });
+}
+
+async function joinTeam(request: Request, env: CloudflareEnv) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const body = await readJson<{ join_code: string; accepted_agreement: boolean }>(request);
+  const code = body.join_code?.trim().toUpperCase();
+  if (!code) return errorResponse("请输入邀请码", 400);
+  const team = await env.DB.prepare(`SELECT * FROM teams WHERE join_code = ? AND status = 'active'`).bind(code).first<any>();
+  if (!team) return errorResponse("未找到对应的团队或比赛", 404);
+  const existing = await getTeamMembership(env, team.id, userId);
+  if (existing) {
+    return jsonResponse(teamSummary({ ...team, member_count: 0, active_members: 0 }, existing));
+  }
+  if (team.agreement_text && !body.accepted_agreement) {
+    return errorResponse("加入前需要同意该团队/比赛的附加协议", 400);
+  }
+
+  const now = nowIso();
+  await env.DB
+    .prepare(
+      `INSERT INTO team_members
+       (id, team_id, user_id, role, status, accepted_agreement_version, accepted_agreement_at, joined_at)
+       VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      team.id,
+      userId,
+      team.agreement_text ? Number(team.agreement_version || 0) : null,
+      team.agreement_text ? now : null,
+      now
+    )
+    .run();
+
+  return jsonResponse(teamSummary({ ...team, member_count: 0, active_members: 0 }, { role: "member" }), 201);
+}
+
+async function getTeamDetail(request: Request, env: CloudflareEnv, teamId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const team = await getTeamById(env, teamId);
+  if (!team) return errorResponse("团队/比赛不存在", 404);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership) return errorResponse("无权访问该团队/比赛", 403);
+  const meta = await env.DB
+    .prepare(`SELECT COUNT(*) AS member_count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_members FROM team_members WHERE team_id = ?`)
+    .bind(teamId)
+    .first<any>();
+  return jsonResponse(teamSummary({ ...team, ...meta }, membership));
+}
+
+async function updateTeam(request: Request, env: CloudflareEnv, teamId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const team = await getTeamById(env, teamId);
+  if (!team) return errorResponse("团队/比赛不存在", 404);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership || !canManageTeam(membership.role)) return errorResponse("无权管理该团队/比赛", 403);
+  const body = await readJson<Record<string, unknown>>(request);
+  const agreementChanged =
+    body.agreement_title !== undefined || body.agreement_text !== undefined;
+  const agreementVersion = agreementChanged
+    ? Number(team.agreement_version || 0) + 1
+    : Number(team.agreement_version || 0);
+
+  const next = {
+    name: body.name == null ? team.name : String(body.name),
+    description: body.description == null ? team.description : String(body.description),
+    theme: body.theme == null ? team.theme : String(body.theme),
+    training_start_at: body.training_start_at == null ? team.training_start_at : String(body.training_start_at),
+    training_end_at: body.training_end_at == null ? team.training_end_at : String(body.training_end_at),
+    agreement_title: body.agreement_title == null ? team.agreement_title : String(body.agreement_title),
+    agreement_text: body.agreement_text == null ? team.agreement_text : String(body.agreement_text),
+    status: body.status == null ? team.status : String(body.status),
+  };
+
+  await env.DB
+    .prepare(
+      `UPDATE teams
+       SET name = ?, description = ?, theme = ?, training_start_at = ?, training_end_at = ?, agreement_title = ?, agreement_text = ?, agreement_version = ?, status = ?, updated_at = ?
+       WHERE id = ?`
+    )
+    .bind(
+      next.name,
+      next.description,
+      next.theme,
+      next.training_start_at,
+      next.training_end_at,
+      next.agreement_title,
+      next.agreement_text,
+      agreementVersion,
+      next.status,
+      nowIso(),
+      teamId
+    )
+    .run();
+
+  const updated = await getTeamById(env, teamId);
+  const meta = await env.DB
+    .prepare(`SELECT COUNT(*) AS member_count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_members FROM team_members WHERE team_id = ?`)
+    .bind(teamId)
+    .first<any>();
+  return jsonResponse(teamSummary({ ...updated, ...meta }, membership));
+}
+
+async function getTeamMembers(request: Request, env: CloudflareEnv, teamId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership || !canManageTeam(membership.role)) return errorResponse("无权查看成员情况", 403);
+  const team = await getTeamById(env, teamId);
+  if (!team) return errorResponse("团队/比赛不存在", 404);
+  const start = team.training_start_at || "";
+  const end = team.training_end_at || "";
+
+  const rows = await env.DB
+    .prepare(
+      `SELECT tm.user_id, tm.role, tm.joined_at, u.display_name, u.username, u.email,
+              COUNT(DISTINCT s.id) AS total_sessions,
+              SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions,
+              SUM(CASE WHEN s.status = 'active' THEN 1 ELSE 0 END) AS active_sessions,
+              AVG(CASE WHEN s.status = 'completed' THEN s.score / 10.0 END) AS average_score,
+              MAX(COALESCE(s.ended_at, s.started_at, tm.joined_at)) AS last_activity_at
+       FROM team_members tm
+       JOIN users u ON u.id = tm.user_id
+       LEFT JOIN counseling_sessions s
+         ON s.user_id = tm.user_id
+        AND (? = '' OR s.started_at >= ?)
+        AND (? = '' OR s.started_at <= ?)
+       WHERE tm.team_id = ? AND tm.status = 'active'
+       GROUP BY tm.user_id, tm.role, tm.joined_at, u.display_name, u.username, u.email
+       ORDER BY CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.display_name ASC`
+    )
+    .bind(start, start, end, end, teamId)
+    .all<any>();
+
+  return jsonResponse(
+    (rows.results || []).map((row) => ({
+      user_id: row.user_id,
+      display_name: row.display_name,
+      username: row.username,
+      email: row.email,
+      role: row.role,
+      joined_at: row.joined_at,
+      total_sessions: Number(row.total_sessions || 0),
+      completed_sessions: Number(row.completed_sessions || 0),
+      active_sessions: Number(row.active_sessions || 0),
+      average_score: row.average_score == null ? null : Number(row.average_score),
+      last_activity_at: row.last_activity_at,
+    }))
+  );
+}
+
+async function updateTeamMemberRole(request: Request, env: CloudflareEnv, teamId: string, memberUserId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership || !canManageTeam(membership.role)) return errorResponse("无权管理成员角色", 403);
+  const target = await getTeamMembership(env, teamId, memberUserId);
+  if (!target) return errorResponse("成员不存在", 404);
+  if (target.role === "owner") return errorResponse("不能修改发起者角色", 400);
+  const body = await readJson<{ role: "admin" | "member" }>(request);
+  if (!["admin", "member"].includes(body.role)) return errorResponse("role 非法", 400);
+  await env.DB
+    .prepare(`UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?`)
+    .bind(body.role, teamId, memberUserId)
+    .run();
+  return jsonResponse({ ok: true });
 }
 
 async function knowledgeDimensions() {
@@ -823,6 +1171,23 @@ async function handleApi(request: Request, env: CloudflareEnv) {
   if (pathname === "/api/v1/auth/login" && request.method === "POST") return login(request, env);
   if (pathname === "/api/v1/auth/me" && request.method === "GET") return getMe(request, env);
   if (pathname === "/api/v1/auth/me" && request.method === "PATCH") return updateMe(request, env);
+
+  if (pathname === "/api/v1/teams" && request.method === "GET") return listTeams(request, env);
+  if (pathname === "/api/v1/teams" && request.method === "POST") return createTeam(request, env);
+  if (pathname === "/api/v1/teams/join-preview" && request.method === "GET") return previewJoinTeam(request, env);
+  if (pathname === "/api/v1/teams/join" && request.method === "POST") return joinTeam(request, env);
+
+  const teamDetailMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)$/);
+  if (teamDetailMatch && request.method === "GET") return getTeamDetail(request, env, teamDetailMatch[1]);
+  if (teamDetailMatch && request.method === "PATCH") return updateTeam(request, env, teamDetailMatch[1]);
+
+  const teamMembersMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members$/);
+  if (teamMembersMatch && request.method === "GET") return getTeamMembers(request, env, teamMembersMatch[1]);
+
+  const teamMemberRoleMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members\/([^/]+)$/);
+  if (teamMemberRoleMatch && request.method === "PATCH") {
+    return updateTeamMemberRole(request, env, teamMemberRoleMatch[1], teamMemberRoleMatch[2]);
+  }
 
   if (pathname === "/api/v1/simulator/profiles" && request.method === "GET") return listProfiles(request, env);
   if (pathname === "/api/v1/simulator/profiles/groups" && request.method === "GET") return jsonResponse(GROUP_OPTIONS);

@@ -1,7 +1,7 @@
 /* annapod - Auth Store (Zustand) */
 
 import { create } from "zustand";
-import type { User } from "./types";
+import type { RegisterRequest, User } from "./types";
 import { auth } from "./api";
 
 interface AuthState {
@@ -11,12 +11,7 @@ interface AuthState {
   isAuthenticated: boolean;
 
   login: (username: string, password: string) => Promise<void>;
-  register: (data: {
-    email: string;
-    username: string;
-    display_name: string;
-    password: string;
-  }) => Promise<void>;
+  register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
   loadUser: () => Promise<void>;
   setToken: (token: string) => void;
