@@ -5,7 +5,7 @@ function getChatBaseUrl(env: CloudflareEnv) {
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
-  return (env.EMBEDDING_BASE_URL || env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  return (env.EMBEDDING_BASE_URL || env.AI_BASE_URL || "https://mutualai.zeabur.app/v1").replace(/\/$/, "");
 }
 
 export async function chatCompletion(
