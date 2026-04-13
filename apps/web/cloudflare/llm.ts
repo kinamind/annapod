@@ -1,7 +1,7 @@
 import type { CloudflareEnv, LlmMessage } from "./types";
 
 function getChatBaseUrl(env: CloudflareEnv) {
-  return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  return (env.AI_BASE_URL || "https://mutualai.zeabur.app/v1").replace(/\/$/, "");
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
@@ -13,7 +13,7 @@ export async function chatCompletion(
   messages: LlmMessage[],
   options?: { temperature?: number }
 ) {
-  const model = env.AI_MODEL || "gpt-5.4";
+  const model = env.AI_MODEL || "gpt-5-nano";
   const baseUrl = getChatBaseUrl(env);
 
   if (/^gpt-5(?:\.|-|$)/.test(model) && /api\.openai\.com/.test(baseUrl)) {

@@ -33,8 +33,8 @@ pnpm dev
 建议的运行时环境变量：
 
 - `AI_API_KEY`
-- `AI_BASE_URL=https://api.openai.com/v1`
-- `AI_MODEL=gpt-5.4`
+- `AI_BASE_URL=https://mutualai.zeabur.app/v1`
+- `AI_MODEL=gpt-5-nano`
 - `AI_REASONING_EFFORT=none`
 - `JWT_SECRET=<强随机字符串>`
 
@@ -76,8 +76,8 @@ pnpm cf:migrate:remote
 
 建议同时确认这些普通环境变量：
 
-- `AI_BASE_URL=https://api.openai.com/v1`
-- `AI_MODEL=gpt-5.4`
+- `AI_BASE_URL=https://mutualai.zeabur.app/v1`
+- `AI_MODEL=gpt-5-nano`
 - `AI_REASONING_EFFORT=none`
 - `EMBEDDING_PROVIDER=openai_compatible`
 - `EMBEDDING_BASE_URL=https://api.openai.com/v1`
