@@ -1,11 +1,11 @@
 import type { CloudflareEnv, LlmMessage } from "./types";
 
 function getChatBaseUrl(env: CloudflareEnv) {
-  return (env.AI_BASE_URL || "https://mutualai.zeabur.app/v1").replace(/\/$/, "");
+  return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
-  return (env.EMBEDDING_BASE_URL || env.AI_BASE_URL || "https://mutualai.zeabur.app/v1").replace(/\/$/, "");
+  return (env.EMBEDDING_BASE_URL || env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 }
 
 export async function chatCompletion(

@@ -26,10 +26,11 @@
 
 ```bash
 AI_API_KEY=...
-AI_BASE_URL=https://mutualai.zeabur.app/v1
+AI_BASE_URL=https://api.openai.com/v1
 AI_MODEL=gpt-5-nano
 AI_REASONING_EFFORT=none
 EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_BASE_URL=https://api.openai.com/v1
 EMBEDDING_MODEL=text-embedding-3-small
 JWT_SECRET=replace-this-with-a-long-random-secret
 ```
