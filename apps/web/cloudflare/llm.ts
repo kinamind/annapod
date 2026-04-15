@@ -1,6 +1,7 @@
 import type { CloudflareEnv, LlmMessage } from "./types";
 
-const GPT5_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
+const GPT54_REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh"]);
+const GPT5_LEGACY_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
 
 function getChatBaseUrl(env: CloudflareEnv) {
   return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -11,15 +12,24 @@ function getEmbeddingBaseUrl(env: CloudflareEnv) {
 }
 
 function getGpt5ReasoningEffort(env: CloudflareEnv) {
+  const model = env.AI_MODEL || "gpt-5.4-nano";
   const effort = env.AI_REASONING_EFFORT?.trim().toLowerCase();
 
-  // OpenAI GPT-5 models do not support fully disabling reasoning.
-  // Treat older "none"-style config values as the lowest supported setting.
+  if (/^gpt-5\.4(?:-|$)/.test(model)) {
+    if (!effort || effort === "disabled" || effort === "off" || effort === "false") {
+      return "none";
+    }
+
+    return GPT54_REASONING_EFFORTS.has(effort) ? effort : "none";
+  }
+
+  // Older GPT-5 snapshots like gpt-5-nano do not support "none".
+  // Treat none-style config values as the lowest supported setting for those models.
   if (!effort || effort === "none" || effort === "disabled" || effort === "off" || effort === "false") {
     return "minimal";
   }
 
-  return GPT5_REASONING_EFFORTS.has(effort) ? effort : "minimal";
+  return GPT5_LEGACY_REASONING_EFFORTS.has(effort) ? effort : "minimal";
 }
 
 export async function chatCompletion(
@@ -27,7 +37,7 @@ export async function chatCompletion(
   messages: LlmMessage[],
   options?: { temperature?: number }
 ) {
-  const model = env.AI_MODEL || "gpt-5-nano";
+  const model = env.AI_MODEL || "gpt-5.4-nano";
   const baseUrl = getChatBaseUrl(env);
 
   if (/^gpt-5(?:\.|-|$)/.test(model) && /api\.openai\.com/.test(baseUrl)) {
