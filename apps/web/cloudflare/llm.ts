@@ -1,11 +1,25 @@
 import type { CloudflareEnv, LlmMessage } from "./types";
 
+const GPT5_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
+
 function getChatBaseUrl(env: CloudflareEnv) {
   return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
   return (env.EMBEDDING_BASE_URL || env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+}
+
+function getGpt5ReasoningEffort(env: CloudflareEnv) {
+  const effort = env.AI_REASONING_EFFORT?.trim().toLowerCase();
+
+  // OpenAI GPT-5 models do not support fully disabling reasoning.
+  // Treat older "none"-style config values as the lowest supported setting.
+  if (!effort || effort === "none" || effort === "disabled" || effort === "off" || effort === "false") {
+    return "minimal";
+  }
+
+  return GPT5_REASONING_EFFORTS.has(effort) ? effort : "minimal";
 }
 
 export async function chatCompletion(
@@ -25,7 +39,7 @@ export async function chatCompletion(
       },
       body: JSON.stringify({
         model,
-        reasoning: { effort: env.AI_REASONING_EFFORT || "none" },
+        reasoning: { effort: getGpt5ReasoningEffort(env) },
         input: messages.map((message) => ({
           role: message.role,
           content: message.content,

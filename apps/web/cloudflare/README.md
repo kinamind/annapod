@@ -28,7 +28,7 @@
 AI_API_KEY=...
 AI_BASE_URL=https://api.openai.com/v1
 AI_MODEL=gpt-5-nano
-AI_REASONING_EFFORT=none
+AI_REASONING_EFFORT=minimal
 EMBEDDING_PROVIDER=openai_compatible
 EMBEDDING_BASE_URL=https://api.openai.com/v1
 EMBEDDING_MODEL=text-embedding-3-small
