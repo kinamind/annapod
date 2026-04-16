@@ -4,7 +4,7 @@ const GPT54_REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh
 const GPT5_LEGACY_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
 
 function getChatBaseUrl(env: CloudflareEnv) {
-  return (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  return (env.AI_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
 }
 
 function getEmbeddingBaseUrl(env: CloudflareEnv) {
@@ -12,7 +12,7 @@ function getEmbeddingBaseUrl(env: CloudflareEnv) {
 }
 
 function getGpt5ReasoningEffort(env: CloudflareEnv) {
-  const model = env.AI_MODEL || "gpt-5.4-nano";
+  const model = env.AI_MODEL || "deepseek-chat";
   const effort = env.AI_REASONING_EFFORT?.trim().toLowerCase();
 
   if (/^gpt-5\.4(?:-|$)/.test(model)) {
@@ -37,7 +37,7 @@ export async function chatCompletion(
   messages: LlmMessage[],
   options?: { temperature?: number }
 ) {
-  const model = env.AI_MODEL || "gpt-5.4-nano";
+  const model = env.AI_MODEL || "deepseek-chat";
   const baseUrl = getChatBaseUrl(env);
 
   if (/^gpt-5(?:\.|-|$)/.test(model) && /api\.openai\.com/.test(baseUrl)) {

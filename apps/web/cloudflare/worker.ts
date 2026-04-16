@@ -426,7 +426,7 @@ async function startSession(request: Request, env: CloudflareEnv) {
         snapshot.currentEmotion,
         hasLongTermMemory ? 1 : 0,
         "annaagent-init-skill/v1",
-        env.AI_MODEL || "gpt-5.4-nano",
+        env.AI_MODEL || "deepseek-chat",
         jsonText({ initSource: snapshot.initSource }),
         nowIso(),
         0
