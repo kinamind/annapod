@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-anonymous-default-export */
 
+import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
+import { zipSync, strToU8 } from "fflate";
 import { getAuthUserId, hashPassword, signJwt, verifyPassword } from "./auth";
 import { DIFFICULTY_LEVELS, EVALUATION_DIMENSIONS, GROUP_OPTIONS, ISSUE_OPTIONS, SCHOOL_OPTIONS } from "./constants";
 import { indexLongTermMemory } from "./memory";
@@ -66,53 +68,75 @@ function markdownText(value: unknown) {
   return String(value ?? "").replace(/\r\n/g, "\n").trim();
 }
 
-function buildTranscriptDocument(team: any, records: any[]) {
-  const sections = [`# ${team.name} 咨询实录导出`, ``, `- 比赛/团队 ID: ${team.id}`, `- 类型: ${team.kind}`, `- 导出时间: ${nowIso()}`, ``];
+function sanitizeFilenamePart(value: string) {
+  return value.replace(/[\\/:*?"<>|]/g, "_").trim() || "未命名";
+}
+
+function toArrayBuffer(bytes: Uint8Array) {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
+function multiLineParagraphs(value: unknown, label?: string) {
+  const text = markdownText(value);
+  if (!text) return [new Paragraph(label ? `${label}无` : "无")];
+  const parts = text.split("\n");
+  return parts.map((part, index) =>
+    new Paragraph(index === 0 && label ? `${label}${part}` : part)
+  );
+}
+
+async function buildTranscriptDocx(team: any, participant: { display_name: string; username: string; email: string }, records: any[]) {
+  const children: Paragraph[] = [
+    new Paragraph({ text: `${team.name} 咨询实录`, heading: HeadingLevel.TITLE }),
+    new Paragraph(`参赛者：${participant.display_name} (@${participant.username})`),
+    new Paragraph(`邮箱：${participant.email}`),
+    new Paragraph(`导出时间：${nowIso()}`),
+    new Paragraph(""),
+  ];
 
   for (const row of records) {
     const messages = safeJsonParse<Array<{ role?: string; content?: string }>>(row.messages, []);
-    const evaluation = safeJsonParse<Record<string, unknown>>(row.evaluation, {});
-    sections.push(`## 会话 ${row.id}`);
-    sections.push(``);
-    sections.push(`- 参赛者: ${row.display_name} (@${row.username})`);
-    sections.push(`- 邮箱: ${row.email}`);
-    sections.push(`- 开始时间: ${row.started_at}`);
-    sections.push(`- 结束时间: ${row.ended_at || ""}`);
-    sections.push(`- 状态: ${row.status}`);
-    sections.push(`- 得分: ${row.score == null ? "" : (Number(row.score) / 10).toFixed(1)}`);
-    sections.push(`- 来访者画像: ${row.gender}，${row.age}岁，${row.occupation}，${row.marital_status}`);
-    sections.push(``);
-    sections.push(`### 对话内容`);
-    sections.push(``);
+    const evaluation = safeJsonParse<Record<string, any>>(row.evaluation, {});
+    children.push(new Paragraph({ text: `会话 ${row.id}`, heading: HeadingLevel.HEADING_1 }));
+    children.push(new Paragraph(`开始时间：${row.started_at}`));
+    children.push(new Paragraph(`结束时间：${row.ended_at || ""}`));
+    children.push(new Paragraph(`状态：${row.status}`));
+    children.push(new Paragraph(`得分：${row.score == null ? "" : (Number(row.score) / 10).toFixed(1)}`));
+    children.push(new Paragraph(`来访者画像：${row.gender}，${row.age}岁，${row.occupation}，${row.marital_status}`));
+    children.push(new Paragraph({ text: "对话内容", heading: HeadingLevel.HEADING_2 }));
+
     if (!messages.length) {
-      sections.push(`_无对话记录_`);
+      children.push(new Paragraph("无对话记录"));
     } else {
       for (const message of messages) {
         const role = (message.role || "").toLowerCase();
-        const label = role === "seeker" || role === "client" ? "来访者" : role === "counselor" ? "咨询员" : (message.role || "未知角色");
-        sections.push(`**${label}：**`);
-        sections.push(markdownText(message.content));
-        sections.push(``);
+        const label = role === "seeker" || role === "client" ? "来访者：" : role === "counselor" ? "咨询员：" : `${message.role || "未知角色"}：`;
+        children.push(...multiLineParagraphs(message.content, label));
+        children.push(new Paragraph(""));
       }
     }
+
     if (evaluation && Object.keys(evaluation).length > 0) {
-      sections.push(`### 评估摘要`);
-      sections.push(``);
+      children.push(new Paragraph({ text: "评估摘要", heading: HeadingLevel.HEADING_2 }));
       if (typeof evaluation.feedback === "string" && evaluation.feedback.trim()) {
-        sections.push(markdownText(evaluation.feedback));
-        sections.push(``);
+        children.push(...multiLineParagraphs(evaluation.feedback));
       }
       if (Array.isArray(evaluation.strengths) && evaluation.strengths.length > 0) {
-        sections.push(`- 优势: ${evaluation.strengths.join("；")}`);
+        children.push(new Paragraph(`优势：${evaluation.strengths.join("；")}`));
       }
       if (Array.isArray(evaluation.tips) && evaluation.tips.length > 0) {
-        sections.push(`- 建议: ${evaluation.tips.join("；")}`);
+        children.push(new Paragraph(`建议：${evaluation.tips.join("；")}`));
       }
-      sections.push(``);
     }
+
+    children.push(new Paragraph(""));
   }
 
-  return `${sections.join("\n")}\n`;
+  const document = new Document({ sections: [{ properties: {}, children }] });
+  const buffer = await Packer.toBuffer(document);
+  return new Uint8Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
 }
 
 function teamSummary(row: any, membership: any) {
@@ -1244,17 +1268,52 @@ async function exportTeamTranscripts(request: Request, env: CloudflareEnv, teamI
   const records = rows.results || [];
   if (!records.length) return errorResponse("没有匹配的咨询记录可导出", 404);
 
-  const scopeName = sessionId
-    ? `session-${sessionId}`
-    : participantUserId
-      ? `user-${participantUserId}`
-      : "all";
+  const grouped = new Map<string, any[]>();
+  for (const row of records) {
+    const key = row.user_id;
+    const list = grouped.get(key) || [];
+    list.push(row);
+    grouped.set(key, list);
+  }
 
-  return new Response(buildTranscriptDocument(team, records), {
+  if (sessionId || participantUserId) {
+    const first = records[0];
+    const buffer = await buildTranscriptDocx(team, {
+      display_name: first.display_name,
+      username: first.username,
+      email: first.email,
+    }, records);
+    const suffix = sessionId ? sanitizeFilenamePart(`${first.display_name}-${sessionId}`) : sanitizeFilenamePart(first.display_name);
+    return new Response(new Blob([toArrayBuffer(buffer)], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${team.name}-${suffix}.docx`)}`,
+      },
+    });
+  }
+
+  const zipEntries: Record<string, Uint8Array> = {};
+  for (const rows of grouped.values()) {
+    const first = rows[0];
+    const buffer = await buildTranscriptDocx(team, {
+      display_name: first.display_name,
+      username: first.username,
+      email: first.email,
+    }, rows);
+    const filename = `${sanitizeFilenamePart(first.display_name)}-${sanitizeFilenamePart(first.username)}.docx`;
+    zipEntries[filename] = buffer;
+  }
+  zipEntries["README.txt"] = strToU8(`比赛：${team.name}\n共导出 ${Object.keys(zipEntries).length} 份参赛者咨询实录 DOCX。\n`);
+
+  const zipBuffer = zipSync(zipEntries);
+  return new Response(new Blob([toArrayBuffer(zipBuffer)], { type: "application/zip" }), {
     status: 200,
     headers: {
-      "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${team.name}-transcripts-${scopeName}.md`)}`,
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${team.name}-咨询实录.zip`)}`,
     },
   });
 }

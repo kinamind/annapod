@@ -271,8 +271,8 @@ export default function TeamsPage() {
     await handleDownload(
       "export-all-transcripts",
       teams.getTranscriptsUrl(selectedTeamId),
-      `${selectedTeam.name}-全部咨询实录.md`,
-      "全部咨询实录已导出"
+      `${selectedTeam.name}-咨询实录.zip`,
+      "全部咨询实录压缩包已导出"
     );
   };
 
@@ -281,7 +281,7 @@ export default function TeamsPage() {
     await handleDownload(
       `export-member-${member.user_id}`,
       teams.getTranscriptsUrl(selectedTeamId, { user_id: member.user_id }),
-      `${selectedTeam.name}-${member.display_name}-咨询实录.md`,
+      `${selectedTeam.name}-${member.display_name}-咨询实录.docx`,
       `已导出 ${member.display_name} 的咨询实录`
     );
   };
@@ -291,8 +291,8 @@ export default function TeamsPage() {
     await handleDownload(
       `export-session-${sessionId}`,
       teams.getTranscriptsUrl(selectedTeamId, { session_id: sessionId }),
-      `${selectedTeam.name}-${participantName}-${sessionId}.md`,
-      "单次咨询实录已导出"
+      `${selectedTeam.name}-${participantName}-${sessionId}.docx`,
+      "单次咨询实录 DOCX 已导出"
     );
   };
 
@@ -456,7 +456,7 @@ export default function TeamsPage() {
                               <Download className="h-4 w-4 mr-2" /> 导出成员记录
                             </Button>
                             <Button variant="outline" size="sm" onClick={handleExportAllTranscripts} disabled={loadingAction === "export-all-transcripts"}>
-                              <Download className="h-4 w-4 mr-2" /> 导出全部实录
+                              <Download className="h-4 w-4 mr-2" /> 导出全部实录 ZIP
                             </Button>
                           </div>
                         </div>
