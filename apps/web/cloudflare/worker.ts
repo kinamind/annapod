@@ -30,6 +30,38 @@ async function getTeamById(env: CloudflareEnv, teamId: string) {
   return env.DB.prepare(`SELECT * FROM teams WHERE id = ?`).bind(teamId).first<any>();
 }
 
+function buildAttemptSummary(rawAttemptsUsed: number, attemptsAdjustment: number, maxAttempts: number | null | undefined) {
+  const raw = Math.max(0, Number(rawAttemptsUsed || 0));
+  const adjustment = Number(attemptsAdjustment || 0);
+  const effective = Math.max(0, raw + adjustment);
+  const limit = maxAttempts == null ? null : Number(maxAttempts);
+
+  return {
+    attempts_used_raw: raw,
+    attempts_adjustment: adjustment,
+    attempts_used_effective: effective,
+    attempts_remaining: limit == null ? null : Math.max(0, limit - effective),
+  };
+}
+
+async function getTeamAttemptSummary(env: CloudflareEnv, teamId: string, userId: string, maxAttempts: number | null | undefined) {
+  const row = await env.DB
+    .prepare(
+      `SELECT tm.attempts_adjustment,
+              (SELECT COUNT(*) FROM counseling_sessions cs WHERE cs.team_id = tm.team_id AND cs.user_id = tm.user_id) AS raw_attempts_used
+       FROM team_members tm
+       WHERE tm.team_id = ? AND tm.user_id = ? AND tm.status = 'active'`
+    )
+    .bind(teamId, userId)
+    .first<any>();
+
+  return buildAttemptSummary(row?.raw_attempts_used || 0, row?.attempts_adjustment || 0, maxAttempts);
+}
+
+function csvCell(value: unknown) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
 function teamSummary(row: any, membership: any) {
   return {
     id: row.id,
@@ -291,11 +323,8 @@ async function startSession(request: Request, env: CloudflareEnv) {
     team = await getTeamById(env, teamId);
     if (!team) return errorResponse("团队/比赛不存在", 404);
     if (team.max_sessions_per_user) {
-      const attemptsRow = await env.DB
-        .prepare(`SELECT COUNT(*) AS total FROM counseling_sessions WHERE team_id = ? AND user_id = ?`)
-        .bind(teamId, userId)
-        .first<{ total: number }>();
-      if (Number(attemptsRow?.total || 0) >= Number(team.max_sessions_per_user)) {
+      const attempts = await getTeamAttemptSummary(env, teamId, userId, Number(team.max_sessions_per_user));
+      if ((attempts.attempts_remaining ?? 0) <= 0) {
         return errorResponse("你在该比赛/团队中的可用测试次数已用尽", 400);
       }
     }
@@ -516,12 +545,23 @@ async function getSessionDetail(request: Request, env: CloudflareEnv, sessionId:
   const userId = await requireUser(request, env);
   if (!userId) return errorResponse("Unauthorized", 401);
   const session = await env.DB.prepare(`SELECT * FROM counseling_sessions WHERE id = ?`).bind(sessionId).first<any>();
-  if (!session || session.user_id !== userId) return errorResponse("Session 不存在", 404);
+  if (!session) return errorResponse("Session 不存在", 404);
+  if (session.user_id !== userId) {
+    if (!session.team_id) return errorResponse("Session 不存在", 404);
+    const membership = await getTeamMembership(env, session.team_id, userId);
+    if (!membership || !canManageTeam(membership.role)) return errorResponse("Session 不存在", 404);
+  }
   const runtimeState = safeJsonParse<SessionSnapshot | null>(session.runtime_state, null);
+  const team = session.team_id
+    ? await env.DB.prepare(`SELECT id, kind, name FROM teams WHERE id = ?`).bind(session.team_id).first<any>()
+    : null;
   return jsonResponse({
     id: session.id,
     profile_id: session.profile_id,
+    can_interact: session.user_id === userId,
     team_id: session.team_id,
+    team_kind: team?.kind || null,
+    team_name: team?.name || null,
     session_group_id: session.session_group_id,
     messages: safeJsonParse(session.messages, []),
     status: session.status,
@@ -555,9 +595,10 @@ async function listSessions(request: Request, env: CloudflareEnv) {
 
   const rows = await env.DB
     .prepare(
-      `SELECT s.*, p.gender, p.age, p.occupation, p.marital_status
+      `SELECT s.*, p.gender, p.age, p.occupation, p.marital_status, t.kind AS team_kind, t.name AS team_name
        FROM counseling_sessions s
        JOIN seeker_profiles p ON p.id = s.profile_id
+       LEFT JOIN teams t ON t.id = s.team_id
        WHERE ${whereClauses.join(" AND ")}
        ORDER BY s.started_at DESC`
     )
@@ -568,6 +609,9 @@ async function listSessions(request: Request, env: CloudflareEnv) {
     (rows.results || []).map((row) => ({
       id: row.id,
       profile_id: row.profile_id,
+      team_id: row.team_id,
+      team_kind: row.team_kind || null,
+      team_name: row.team_name || null,
       session_group_id: row.session_group_id,
       status: row.status,
       started_at: row.started_at,
@@ -602,6 +646,7 @@ async function listSessionGroups(request: Request, env: CloudflareEnv) {
     (rows.results || []).map((row) => ({
       id: row.id,
       profile_id: row.profile_id,
+      team_id: row.team_id,
       title: row.title,
       description: row.description,
       session_count: Number(row.session_count || 0),
@@ -981,6 +1026,8 @@ async function getTeamMembers(request: Request, env: CloudflareEnv, teamId: stri
   const rows = await env.DB
     .prepare(
       `SELECT tm.user_id, tm.role, tm.joined_at, u.display_name, u.username, u.email,
+              tm.attempts_adjustment,
+              (SELECT COUNT(*) FROM counseling_sessions cs WHERE cs.team_id = tm.team_id AND cs.user_id = tm.user_id) AS attempts_used_raw,
               COUNT(DISTINCT s.id) AS total_sessions,
               SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions,
               SUM(CASE WHEN s.status = 'active' THEN 1 ELSE 0 END) AS active_sessions,
@@ -1013,8 +1060,95 @@ async function getTeamMembers(request: Request, env: CloudflareEnv, teamId: stri
       active_sessions: Number(row.active_sessions || 0),
       average_score: row.average_score == null ? null : Number(row.average_score),
       last_activity_at: row.last_activity_at,
+      ...buildAttemptSummary(row.attempts_used_raw || 0, row.attempts_adjustment || 0, team.max_sessions_per_user),
     }))
   );
+}
+
+async function listTeamRecords(request: Request, env: CloudflareEnv, teamId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership || !canManageTeam(membership.role)) return errorResponse("无权查看比赛记录", 403);
+  const team = await getTeamById(env, teamId);
+  if (!team) return errorResponse("团队/比赛不存在", 404);
+
+  const rows = await env.DB
+    .prepare(
+      `SELECT s.id, s.user_id, s.profile_id, s.session_group_id, s.status, s.started_at, s.ended_at, s.duration_seconds,
+              s.score, s.evaluation, u.display_name, u.username, u.email, p.gender, p.age, p.occupation, p.marital_status
+       FROM counseling_sessions s
+       JOIN users u ON u.id = s.user_id
+       JOIN seeker_profiles p ON p.id = s.profile_id
+       WHERE s.team_id = ?
+       ORDER BY s.started_at DESC`
+    )
+    .bind(teamId)
+    .all<any>();
+
+  const records = (rows.results || []).map((row) => {
+    const evaluation = safeJsonParse<Record<string, unknown>>(row.evaluation, {});
+    return {
+      session_id: row.id,
+      user_id: row.user_id,
+      participant_display_name: row.display_name,
+      participant_username: row.username,
+      participant_email: row.email,
+      profile_id: row.profile_id,
+      session_group_id: row.session_group_id,
+      status: row.status,
+      started_at: row.started_at,
+      ended_at: row.ended_at,
+      duration_seconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
+      score: row.score == null ? null : Number(row.score) / 10,
+      profile_summary: `${row.gender}，${row.age}岁，${row.occupation}，${row.marital_status}`,
+      feedback: typeof evaluation.feedback === "string" ? evaluation.feedback : "",
+      team_id: team.id,
+      team_kind: team.kind,
+      team_name: team.name,
+    };
+  });
+
+  const format = new URL(request.url).searchParams.get("format") || "json";
+  if (format === "csv") {
+    const headers = [
+      "session_id",
+      "participant_display_name",
+      "participant_username",
+      "participant_email",
+      "status",
+      "started_at",
+      "ended_at",
+      "duration_seconds",
+      "score",
+      "profile_summary",
+      "feedback",
+    ];
+    const lines = [headers.join(",")].concat(
+      records.map((record) => [
+        record.session_id,
+        record.participant_display_name,
+        record.participant_username,
+        record.participant_email,
+        record.status,
+        record.started_at,
+        record.ended_at || "",
+        record.duration_seconds == null ? "" : String(record.duration_seconds),
+        record.score == null ? "" : record.score.toFixed(1),
+        record.profile_summary,
+        record.feedback,
+      ].map(csvCell).join(","))
+    );
+
+    return new Response(`\uFEFF${lines.join("\n")}`, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+      },
+    });
+  }
+
+  return jsonResponse(records);
 }
 
 async function updateTeamMemberRole(request: Request, env: CloudflareEnv, teamId: string, memberUserId: string) {
@@ -1032,6 +1166,42 @@ async function updateTeamMemberRole(request: Request, env: CloudflareEnv, teamId
     .bind(body.role, teamId, memberUserId)
     .run();
   return jsonResponse({ ok: true });
+}
+
+async function adjustTeamMemberAttempts(request: Request, env: CloudflareEnv, teamId: string, memberUserId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership || !canManageTeam(membership.role)) return errorResponse("无权调整成员次数", 403);
+
+  const team = await getTeamById(env, teamId);
+  if (!team) return errorResponse("团队/比赛不存在", 404);
+  if (team.max_sessions_per_user == null) return errorResponse("该团队/比赛未设置最大测试次数", 400);
+
+  const target = await getTeamMembership(env, teamId, memberUserId);
+  if (!target) return errorResponse("成员不存在", 404);
+
+  const body = await readJson<{ action: "reset" | "add" | "subtract"; amount?: number }>(request);
+  const amount = Math.max(1, Math.floor(Number(body.amount || 1)));
+  const current = await getTeamAttemptSummary(env, teamId, memberUserId, Number(team.max_sessions_per_user));
+
+  let nextAdjustment = current.attempts_adjustment;
+  if (body.action === "reset") {
+    nextAdjustment = -current.attempts_used_raw;
+  } else if (body.action === "add") {
+    nextAdjustment -= amount;
+  } else if (body.action === "subtract") {
+    nextAdjustment += amount;
+  } else {
+    return errorResponse("action 非法", 400);
+  }
+
+  await env.DB
+    .prepare(`UPDATE team_members SET attempts_adjustment = ? WHERE team_id = ? AND user_id = ?`)
+    .bind(nextAdjustment, teamId, memberUserId)
+    .run();
+
+  return jsonResponse(buildAttemptSummary(current.attempts_used_raw, nextAdjustment, Number(team.max_sessions_per_user)));
 }
 
 async function knowledgeDimensions() {
@@ -1294,9 +1464,17 @@ async function handleApi(request: Request, env: CloudflareEnv) {
   const teamMembersMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members$/);
   if (teamMembersMatch && request.method === "GET") return getTeamMembers(request, env, teamMembersMatch[1]);
 
+  const teamRecordsMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/records$/);
+  if (teamRecordsMatch && request.method === "GET") return listTeamRecords(request, env, teamRecordsMatch[1]);
+
   const teamMemberRoleMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members\/([^/]+)$/);
   if (teamMemberRoleMatch && request.method === "PATCH") {
     return updateTeamMemberRole(request, env, teamMemberRoleMatch[1], teamMemberRoleMatch[2]);
+  }
+
+  const teamMemberAttemptsMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members\/([^/]+)\/attempts$/);
+  if (teamMemberAttemptsMatch && request.method === "POST") {
+    return adjustTeamMemberAttempts(request, env, teamMemberAttemptsMatch[1], teamMemberAttemptsMatch[2]);
   }
 
   if (pathname === "/api/v1/simulator/profiles" && request.method === "GET") return listProfiles(request, env);

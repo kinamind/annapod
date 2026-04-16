@@ -20,6 +20,7 @@ import type {
   Recommendation,
   TeamJoinPreview,
   TeamMemberSummary,
+  TeamRecordSummary,
   TeamRole,
   TeamSpace,
 } from "./types";
@@ -161,6 +162,10 @@ export const simulator = {
     return request<{
       id: string;
       profile_id: string;
+      can_interact?: boolean;
+      team_id?: string | null;
+      team_kind?: "team" | "competition" | null;
+      team_name?: string | null;
       session_group_id?: string;
       messages: Array<{ role: string; content: string }>;
       status: string;
@@ -186,6 +191,9 @@ export const simulator = {
     return request<Array<{
       id: string;
       profile_id: string;
+      team_id?: string | null;
+      team_kind?: "team" | "competition" | null;
+      team_name?: string | null;
       session_group_id?: string;
       status: string;
       started_at: string;
@@ -269,6 +277,26 @@ export const teams = {
     return request<{ ok: true }>(`/api/v1/teams/${id}/members/${userId}`, {
       method: "PATCH",
       body: JSON.stringify({ role }),
+    });
+  },
+
+  getRecords(id: string) {
+    return request<TeamRecordSummary[]>(`/api/v1/teams/${id}/records`);
+  },
+
+  getRecordsCsvUrl(id: string) {
+    return `${API_BASE}/api/v1/teams/${id}/records?format=csv`;
+  },
+
+  adjustMemberAttempts(id: string, userId: string, data: { action: "reset" | "add" | "subtract"; amount?: number }) {
+    return request<{
+      attempts_used_raw: number;
+      attempts_adjustment: number;
+      attempts_used_effective: number;
+      attempts_remaining?: number | null;
+    }>(`/api/v1/teams/${id}/members/${userId}/attempts`, {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   },
 };

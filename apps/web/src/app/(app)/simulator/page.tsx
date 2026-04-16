@@ -159,6 +159,12 @@ function UserSessionsList({ groupId }: { groupId?: string }) {
             <Badge variant="outline" className={ses.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}>
               {ses.status === "completed" ? "Completed" : "Active"}
             </Badge>
+            {ses.team_id && (
+              <Badge variant="secondary">
+                {ses.team_kind === "competition" ? "比赛" : "团队"}
+                {ses.team_name ? ` · ${ses.team_name}` : ""}
+              </Badge>
+            )}
           </div>
           <div className="text-sm text-muted-foreground flex gap-4 flex-wrap">
             <span>{new Date(ses.started_at).toLocaleString()}</span>

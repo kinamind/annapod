@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, KeyRound, Shield, CalendarRange, Copy } from "lucide-react";
+import { Users, KeyRound, Shield, CalendarRange, Copy, Download } from "lucide-react";
 
 const GROUP_OPTIONS = [
   { value: "", label: "不限群体" },
@@ -95,6 +95,12 @@ export default function TeamsPage() {
   const { data: members, refetch: refetchMembers } = useQuery({
     queryKey: ["team-members", selectedTeamId],
     queryFn: () => teams.getMembers(selectedTeamId),
+    enabled: Boolean(selectedTeamId && teamDetail?.can_manage),
+  });
+
+  const { data: records, refetch: refetchRecords } = useQuery({
+    queryKey: ["team-records", selectedTeamId],
+    queryFn: () => teams.getRecords(selectedTeamId),
     enabled: Boolean(selectedTeamId && teamDetail?.can_manage),
   });
 
@@ -208,6 +214,49 @@ export default function TeamsPage() {
       toast.success("成员角色已更新");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "角色更新失败");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleAdjustAttempts = async (member: TeamMemberSummary, action: "reset" | "add" | "subtract") => {
+    if (!selectedTeamId) return;
+    const amount = action === "reset" ? undefined : 1;
+    setLoadingAction(`${action}-${member.user_id}`);
+    try {
+      await teams.adjustMemberAttempts(selectedTeamId, member.user_id, { action, amount });
+      await Promise.all([refetchMembers(), refetchRecords()]);
+      toast.success(action === "reset" ? "已重置该成员比赛次数" : action === "add" ? "已增加该成员可用次数" : "已扣减该成员可用次数");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "次数调整失败");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleExportRecords = async () => {
+    if (!selectedTeamId) return;
+    const token = typeof window !== "undefined" ? localStorage.getItem("annapod_token") : null;
+    if (!token) {
+      toast.error("当前未登录，无法导出");
+      return;
+    }
+    setLoadingAction("export-records");
+    try {
+      const response = await fetch(teams.getRecordsCsvUrl(selectedTeamId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedTeam?.name || "team-records"}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("比赛记录已导出");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "导出失败");
     } finally {
       setLoadingAction(null);
     }
@@ -366,13 +415,19 @@ export default function TeamsPage() {
 
                     {selectedTeam.can_manage && (
                       <div className="space-y-4">
-                        <div className="font-medium">成员情况</div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-medium">成员情况</div>
+                          <Button variant="outline" size="sm" onClick={handleExportRecords} disabled={loadingAction === "export-records"}>
+                            <Download className="h-4 w-4 mr-2" /> 导出记录
+                          </Button>
+                        </div>
                         <div className="overflow-x-auto rounded-xl border">
                           <table className="w-full text-sm">
                             <thead className="bg-muted/50 text-left">
                               <tr>
                                 <th className="p-3">成员</th>
                                 <th className="p-3">角色</th>
+                                <th className="p-3">比赛次数</th>
                                 <th className="p-3">完成</th>
                                 <th className="p-3">进行中</th>
                                 <th className="p-3">均分</th>
@@ -388,21 +443,87 @@ export default function TeamsPage() {
                                     <div className="text-xs text-muted-foreground">@{member.username}</div>
                                   </td>
                                   <td className="p-3">{member.role}</td>
+                                  <td className="p-3">
+                                    <div className="space-y-1">
+                                      <div>已用: {member.attempts_used_effective}</div>
+                                      {selectedTeam.max_sessions_per_user != null && <div>剩余: {member.attempts_remaining ?? 0}</div>}
+                                      {member.attempts_adjustment !== 0 && <div className="text-xs text-muted-foreground">调整: {member.attempts_adjustment > 0 ? `+${member.attempts_adjustment}` : member.attempts_adjustment}</div>}
+                                    </div>
+                                  </td>
                                   <td className="p-3">{member.completed_sessions}</td>
                                   <td className="p-3">{member.active_sessions}</td>
                                   <td className="p-3">{member.average_score == null ? "-" : member.average_score.toFixed(1)}</td>
                                   <td className="p-3">{member.last_activity_at ? new Date(member.last_activity_at).toLocaleString() : "-"}</td>
                                   <td className="p-3">
                                     {member.role !== "owner" && (
-                                      <div className="flex gap-2">
+                                      <div className="flex flex-wrap gap-2">
                                         <Button size="sm" variant="outline" disabled={loadingAction === `role-${member.user_id}`} onClick={() => handleRoleChange(member, member.role === "admin" ? "member" : "admin")}>
                                           {member.role === "admin" ? "设为成员" : "设为管理员"}
                                         </Button>
+                                        {selectedTeam.max_sessions_per_user != null && (
+                                          <>
+                                            <Button size="sm" variant="outline" disabled={loadingAction === `reset-${member.user_id}`} onClick={() => handleAdjustAttempts(member, "reset")}>
+                                              重置次数
+                                            </Button>
+                                            <Button size="sm" variant="outline" disabled={loadingAction === `add-${member.user_id}`} onClick={() => handleAdjustAttempts(member, "add")}>
+                                              +1 次
+                                            </Button>
+                                            <Button size="sm" variant="outline" disabled={loadingAction === `subtract-${member.user_id}`} onClick={() => handleAdjustAttempts(member, "subtract")}>
+                                              -1 次
+                                            </Button>
+                                          </>
+                                        )}
                                       </div>
                                     )}
                                   </td>
                                 </tr>
                               ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedTeam.can_manage && (
+                      <div className="space-y-4">
+                        <div className="font-medium">比赛记录</div>
+                        <div className="overflow-x-auto rounded-xl border">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50 text-left">
+                              <tr>
+                                <th className="p-3">参赛者</th>
+                                <th className="p-3">开始时间</th>
+                                <th className="p-3">状态</th>
+                                <th className="p-3">得分</th>
+                                <th className="p-3">画像</th>
+                                <th className="p-3">反馈</th>
+                                <th className="p-3">查看</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(records || []).map((record) => (
+                                <tr key={record.session_id} className="border-t align-top">
+                                  <td className="p-3">
+                                    <div className="font-medium">{record.participant_display_name}</div>
+                                    <div className="text-xs text-muted-foreground">@{record.participant_username}</div>
+                                  </td>
+                                  <td className="p-3">{new Date(record.started_at).toLocaleString()}</td>
+                                  <td className="p-3">{record.status}</td>
+                                  <td className="p-3">{record.score == null ? "-" : record.score.toFixed(1)}</td>
+                                  <td className="p-3 max-w-xs">{record.profile_summary}</td>
+                                  <td className="p-3 max-w-md whitespace-pre-wrap text-muted-foreground">{record.feedback || "-"}</td>
+                                  <td className="p-3">
+                                    <Button size="sm" variant="outline" onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(record.session_id)}`)}>
+                                      查看
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                              {records?.length === 0 && (
+                                <tr>
+                                  <td className="p-6 text-center text-muted-foreground" colSpan={7}>当前还没有比赛记录。</td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
                         </div>

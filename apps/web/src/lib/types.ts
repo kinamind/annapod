@@ -95,6 +95,7 @@ export interface EndSessionResponse {
 export interface SessionGroup {
   id: string;
   profile_id: string;
+  team_id?: string | null;
   title: string;
   description?: string;
   session_count: number;
@@ -164,6 +165,30 @@ export interface TeamMemberSummary {
   active_sessions: number;
   average_score: number | null;
   last_activity_at?: string;
+  attempts_used_raw: number;
+  attempts_adjustment: number;
+  attempts_used_effective: number;
+  attempts_remaining?: number | null;
+}
+
+export interface TeamRecordSummary {
+  session_id: string;
+  user_id: string;
+  participant_display_name: string;
+  participant_username: string;
+  participant_email: string;
+  profile_id: string;
+  session_group_id?: string | null;
+  status: string;
+  started_at: string;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  score?: number | null;
+  profile_summary: string;
+  feedback?: string;
+  team_id: string;
+  team_kind: TeamKind;
+  team_name: string;
 }
 
 // ─── Knowledge Base ──────────────────────────────

@@ -37,6 +37,7 @@ export default function ChatPage() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [canInteract, setCanInteract] = useState(true);
   const [evaluation, setEvaluation] = useState<Record<string, string> | null>(
     null
   );
@@ -78,6 +79,7 @@ export default function ChatPage() {
         setCurrentEmotion(data.current_emotion ?? null);
         setStartedAt(data.started_at ?? null);
         setTimeLimitSeconds(data.time_limit_seconds ?? null);
+        setCanInteract(data.can_interact !== false);
         if (data.status === "completed") {
           setSessionEnded(true);
           const ev = data.evaluation as Record<string, string> | undefined;
@@ -115,7 +117,7 @@ export default function ChatPage() {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!sessionId || !text || isLoading || sessionEnded || (remainingSeconds !== null && remainingSeconds <= 0)) return;
+    if (!sessionId || !text || isLoading || sessionEnded || !canInteract || (remainingSeconds !== null && remainingSeconds <= 0)) return;
 
     const userMsg: ChatMessage = {
       role: "counselor",
@@ -210,6 +212,12 @@ export default function ChatPage() {
             <h2 className="text-sm font-semibold">模拟咨询</h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>对话轮次: {turnCount}</span>
+              {!canInteract && (
+                <>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>只读查看</span>
+                </>
+              )}
               {remainingSeconds !== null && (
                 <>
                   <Separator orientation="vertical" className="h-3" />
@@ -232,7 +240,7 @@ export default function ChatPage() {
           variant="destructive"
           size="sm"
           onClick={() => void handleEnd()}
-          disabled={sessionEnded || isEnding}
+          disabled={sessionEnded || isEnding || !canInteract}
         >
           <StopCircle className="mr-1 h-4 w-4" />
           {isEnding ? "结束中…" : "结束咨询"}
@@ -366,13 +374,13 @@ export default function ChatPage() {
               placeholder="输入您的咨询回应…（Enter 发送，Shift+Enter 换行）"
               className="min-h-[44px] max-h-[120px] resize-none"
               rows={1}
-              disabled={isLoading || (remainingSeconds !== null && remainingSeconds <= 0)}
+              disabled={!canInteract || isLoading || (remainingSeconds !== null && remainingSeconds <= 0)}
               autoFocus
             />
             <Button
               size="icon"
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading || (remainingSeconds !== null && remainingSeconds <= 0)}
+              disabled={!canInteract || !input.trim() || isLoading || (remainingSeconds !== null && remainingSeconds <= 0)}
               className="shrink-0 h-11 w-11"
             >
               <Send className="h-4 w-4" />
