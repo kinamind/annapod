@@ -236,30 +236,64 @@ export default function TeamsPage() {
 
   const handleExportRecords = async () => {
     if (!selectedTeamId) return;
+    await handleDownload("export-records", teams.getRecordsCsvUrl(selectedTeamId), `${selectedTeam?.name || "team-records"}.csv`, "比赛记录已导出");
+  };
+
+  const handleDownload = async (actionKey: string, url: string, filename: string, successMessage: string) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("annapod_token") : null;
     if (!token) {
       toast.error("当前未登录，无法导出");
       return;
     }
-    setLoadingAction("export-records");
+    setLoadingAction(actionKey);
     try {
-      const response = await fetch(teams.getRecordsCsvUrl(selectedTeamId), {
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error(await response.text());
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${selectedTeam?.name || "team-records"}.csv`;
+      a.href = objectUrl;
+      a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
-      toast.success("比赛记录已导出");
+      URL.revokeObjectURL(objectUrl);
+      toast.success(successMessage);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "导出失败");
     } finally {
       setLoadingAction(null);
     }
+  };
+
+  const handleExportAllTranscripts = async () => {
+    if (!selectedTeamId || !selectedTeam) return;
+    await handleDownload(
+      "export-all-transcripts",
+      teams.getTranscriptsUrl(selectedTeamId),
+      `${selectedTeam.name}-全部咨询实录.md`,
+      "全部咨询实录已导出"
+    );
+  };
+
+  const handleExportMemberTranscripts = async (member: TeamMemberSummary) => {
+    if (!selectedTeamId || !selectedTeam) return;
+    await handleDownload(
+      `export-member-${member.user_id}`,
+      teams.getTranscriptsUrl(selectedTeamId, { user_id: member.user_id }),
+      `${selectedTeam.name}-${member.display_name}-咨询实录.md`,
+      `已导出 ${member.display_name} 的咨询实录`
+    );
+  };
+
+  const handleExportSessionTranscript = async (sessionId: string, participantName: string) => {
+    if (!selectedTeamId || !selectedTeam) return;
+    await handleDownload(
+      `export-session-${sessionId}`,
+      teams.getTranscriptsUrl(selectedTeamId, { session_id: sessionId }),
+      `${selectedTeam.name}-${participantName}-${sessionId}.md`,
+      "单次咨询实录已导出"
+    );
   };
 
   return (
@@ -417,9 +451,14 @@ export default function TeamsPage() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between gap-3">
                           <div className="font-medium">成员情况</div>
-                          <Button variant="outline" size="sm" onClick={handleExportRecords} disabled={loadingAction === "export-records"}>
-                            <Download className="h-4 w-4 mr-2" /> 导出记录
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={handleExportRecords} disabled={loadingAction === "export-records"}>
+                              <Download className="h-4 w-4 mr-2" /> 导出成员记录
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleExportAllTranscripts} disabled={loadingAction === "export-all-transcripts"}>
+                              <Download className="h-4 w-4 mr-2" /> 导出全部实录
+                            </Button>
+                          </div>
                         </div>
                         <div className="overflow-x-auto rounded-xl border">
                           <table className="w-full text-sm">
@@ -473,6 +512,9 @@ export default function TeamsPage() {
                                             </Button>
                                           </>
                                         )}
+                                        <Button size="sm" variant="outline" disabled={loadingAction === `export-member-${member.user_id}`} onClick={() => handleExportMemberTranscripts(member)}>
+                                          导出该成员实录
+                                        </Button>
                                       </div>
                                     )}
                                   </td>
@@ -497,7 +539,7 @@ export default function TeamsPage() {
                                 <th className="p-3">得分</th>
                                 <th className="p-3">画像</th>
                                 <th className="p-3">反馈</th>
-                                <th className="p-3">查看</th>
+                                <th className="p-3">操作</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -513,9 +555,14 @@ export default function TeamsPage() {
                                   <td className="p-3 max-w-xs">{record.profile_summary}</td>
                                   <td className="p-3 max-w-md whitespace-pre-wrap text-muted-foreground">{record.feedback || "-"}</td>
                                   <td className="p-3">
-                                    <Button size="sm" variant="outline" onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(record.session_id)}`)}>
-                                      查看
-                                    </Button>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button size="sm" variant="outline" onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(record.session_id)}`)}>
+                                        查看
+                                      </Button>
+                                      <Button size="sm" variant="outline" disabled={loadingAction === `export-session-${record.session_id}`} onClick={() => handleExportSessionTranscript(record.session_id, record.participant_display_name)}>
+                                        导出实录
+                                      </Button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))}

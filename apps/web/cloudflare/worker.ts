@@ -62,6 +62,59 @@ function csvCell(value: unknown) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
+function markdownText(value: unknown) {
+  return String(value ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function buildTranscriptDocument(team: any, records: any[]) {
+  const sections = [`# ${team.name} 咨询实录导出`, ``, `- 比赛/团队 ID: ${team.id}`, `- 类型: ${team.kind}`, `- 导出时间: ${nowIso()}`, ``];
+
+  for (const row of records) {
+    const messages = safeJsonParse<Array<{ role?: string; content?: string }>>(row.messages, []);
+    const evaluation = safeJsonParse<Record<string, unknown>>(row.evaluation, {});
+    sections.push(`## 会话 ${row.id}`);
+    sections.push(``);
+    sections.push(`- 参赛者: ${row.display_name} (@${row.username})`);
+    sections.push(`- 邮箱: ${row.email}`);
+    sections.push(`- 开始时间: ${row.started_at}`);
+    sections.push(`- 结束时间: ${row.ended_at || ""}`);
+    sections.push(`- 状态: ${row.status}`);
+    sections.push(`- 得分: ${row.score == null ? "" : (Number(row.score) / 10).toFixed(1)}`);
+    sections.push(`- 来访者画像: ${row.gender}，${row.age}岁，${row.occupation}，${row.marital_status}`);
+    sections.push(``);
+    sections.push(`### 对话内容`);
+    sections.push(``);
+    if (!messages.length) {
+      sections.push(`_无对话记录_`);
+    } else {
+      for (const message of messages) {
+        const role = (message.role || "").toLowerCase();
+        const label = role === "seeker" || role === "client" ? "来访者" : role === "counselor" ? "咨询员" : (message.role || "未知角色");
+        sections.push(`**${label}：**`);
+        sections.push(markdownText(message.content));
+        sections.push(``);
+      }
+    }
+    if (evaluation && Object.keys(evaluation).length > 0) {
+      sections.push(`### 评估摘要`);
+      sections.push(``);
+      if (typeof evaluation.feedback === "string" && evaluation.feedback.trim()) {
+        sections.push(markdownText(evaluation.feedback));
+        sections.push(``);
+      }
+      if (Array.isArray(evaluation.strengths) && evaluation.strengths.length > 0) {
+        sections.push(`- 优势: ${evaluation.strengths.join("；")}`);
+      }
+      if (Array.isArray(evaluation.tips) && evaluation.tips.length > 0) {
+        sections.push(`- 建议: ${evaluation.tips.join("；")}`);
+      }
+      sections.push(``);
+    }
+  }
+
+  return `${sections.join("\n")}\n`;
+}
+
 function teamSummary(row: any, membership: any) {
   return {
     id: row.id,
@@ -1151,6 +1204,61 @@ async function listTeamRecords(request: Request, env: CloudflareEnv, teamId: str
   return jsonResponse(records);
 }
 
+async function exportTeamTranscripts(request: Request, env: CloudflareEnv, teamId: string) {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const membership = await getTeamMembership(env, teamId, userId);
+  if (!membership || !canManageTeam(membership.role)) return errorResponse("无权导出比赛咨询记录", 403);
+
+  const team = await getTeamById(env, teamId);
+  if (!team) return errorResponse("团队/比赛不存在", 404);
+
+  const url = new URL(request.url);
+  const participantUserId = url.searchParams.get("user_id") || "";
+  const sessionId = url.searchParams.get("session_id") || "";
+  const where = ["s.team_id = ?"];
+  const values: unknown[] = [teamId];
+
+  if (participantUserId) {
+    where.push("s.user_id = ?");
+    values.push(participantUserId);
+  }
+  if (sessionId) {
+    where.push("s.id = ?");
+    values.push(sessionId);
+  }
+
+  const rows = await env.DB
+    .prepare(
+      `SELECT s.id, s.user_id, s.messages, s.status, s.started_at, s.ended_at, s.score, s.evaluation,
+              u.display_name, u.username, u.email, p.gender, p.age, p.occupation, p.marital_status
+       FROM counseling_sessions s
+       JOIN users u ON u.id = s.user_id
+       JOIN seeker_profiles p ON p.id = s.profile_id
+       WHERE ${where.join(" AND ")}
+       ORDER BY s.started_at DESC`
+    )
+    .bind(...values)
+    .all<any>();
+
+  const records = rows.results || [];
+  if (!records.length) return errorResponse("没有匹配的咨询记录可导出", 404);
+
+  const scopeName = sessionId
+    ? `session-${sessionId}`
+    : participantUserId
+      ? `user-${participantUserId}`
+      : "all";
+
+  return new Response(buildTranscriptDocument(team, records), {
+    status: 200,
+    headers: {
+      "Content-Type": "text/markdown; charset=utf-8",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${team.name}-transcripts-${scopeName}.md`)}`,
+    },
+  });
+}
+
 async function updateTeamMemberRole(request: Request, env: CloudflareEnv, teamId: string, memberUserId: string) {
   const userId = await requireUser(request, env);
   if (!userId) return errorResponse("Unauthorized", 401);
@@ -1466,6 +1574,9 @@ async function handleApi(request: Request, env: CloudflareEnv) {
 
   const teamRecordsMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/records$/);
   if (teamRecordsMatch && request.method === "GET") return listTeamRecords(request, env, teamRecordsMatch[1]);
+
+  const teamTranscriptsMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/transcripts$/);
+  if (teamTranscriptsMatch && request.method === "GET") return exportTeamTranscripts(request, env, teamTranscriptsMatch[1]);
 
   const teamMemberRoleMatch = pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members\/([^/]+)$/);
   if (teamMemberRoleMatch && request.method === "PATCH") {

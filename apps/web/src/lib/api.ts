@@ -288,6 +288,13 @@ export const teams = {
     return `${API_BASE}/api/v1/teams/${id}/records?format=csv`;
   },
 
+  getTranscriptsUrl(id: string, params?: { user_id?: string; session_id?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.user_id) qs.set("user_id", params.user_id);
+    if (params?.session_id) qs.set("session_id", params.session_id);
+    return `${API_BASE}/api/v1/teams/${id}/transcripts${qs.toString() ? `?${qs.toString()}` : ""}`;
+  },
+
   adjustMemberAttempts(id: string, userId: string, data: { action: "reset" | "add" | "subtract"; amount?: number }) {
     return request<{
       attempts_used_raw: number;
