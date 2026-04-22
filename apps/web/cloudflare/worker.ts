@@ -87,9 +87,9 @@ function multiLineParagraphs(value: unknown, label?: string) {
   );
 }
 
-async function buildTranscriptDocx(team: any, participant: { display_name: string; username: string; email: string }, records: any[]) {
+async function buildTranscriptDocx(titleName: string, participant: { display_name: string; username: string; email: string }, records: any[]) {
   const children: Paragraph[] = [
-    new Paragraph({ text: `${team.name} 咨询实录`, heading: HeadingLevel.TITLE }),
+    new Paragraph({ text: `${titleName} 咨询实录`, heading: HeadingLevel.TITLE }),
     new Paragraph(`参赛者：${participant.display_name} (@${participant.username})`),
     new Paragraph(`邮箱：${participant.email}`),
     new Paragraph(`导出时间：${nowIso()}`),
@@ -812,6 +812,7 @@ async function getMe(request: Request, env: CloudflareEnv) {
     experience_level: user.experience_level,
     specialization: user.specialization,
     is_active: Boolean(user.is_active),
+    is_admin: Boolean(user.is_admin),
     accepted_terms_version: user.accepted_terms_version,
     accepted_terms_at: user.accepted_terms_at,
     research_consent: Boolean(user.research_consent),
@@ -1278,7 +1279,7 @@ async function exportTeamTranscripts(request: Request, env: CloudflareEnv, teamI
 
   if (sessionId || participantUserId) {
     const first = records[0];
-    const buffer = await buildTranscriptDocx(team, {
+    const buffer = await buildTranscriptDocx(team.name, {
       display_name: first.display_name,
       username: first.username,
       email: first.email,
@@ -1298,7 +1299,7 @@ async function exportTeamTranscripts(request: Request, env: CloudflareEnv, teamI
   const zipEntries: Record<string, Uint8Array> = {};
   for (const rows of grouped.values()) {
     const first = rows[0];
-    const buffer = await buildTranscriptDocx(team, {
+    const buffer = await buildTranscriptDocx(team.name, {
       display_name: first.display_name,
       username: first.username,
       email: first.email,
@@ -1608,6 +1609,175 @@ async function getSessionEvaluation(request: Request, env: CloudflareEnv, sessio
   });
 }
 
+async function requireSystemAdmin(request: Request, env: CloudflareEnv): Promise<{ userId: string } | Response> {
+  const userId = await requireUser(request, env);
+  if (!userId) return errorResponse("Unauthorized", 401);
+  const row = await env.DB.prepare(`SELECT is_admin FROM users WHERE id = ?`).bind(userId).first<any>();
+  if (!row || !row.is_admin) return errorResponse("无权访问系统管理员接口", 403);
+  return { userId };
+}
+
+async function adminListSessions(request: Request, env: CloudflareEnv) {
+  const auth = await requireSystemAdmin(request, env);
+  if (auth instanceof Response) return auth;
+
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("user_id") || "";
+  const teamId = url.searchParams.get("team_id") || "";
+  const status = url.searchParams.get("status") || "";
+  const from = url.searchParams.get("from") || "";
+  const to = url.searchParams.get("to") || "";
+  const limit = Math.min(Number(url.searchParams.get("limit") || 200), 1000);
+
+  const where: string[] = [];
+  const values: unknown[] = [];
+  if (userId) { where.push("s.user_id = ?"); values.push(userId); }
+  if (teamId) { where.push("s.team_id = ?"); values.push(teamId); }
+  if (status) { where.push("s.status = ?"); values.push(status); }
+  if (from) { where.push("s.started_at >= ?"); values.push(from); }
+  if (to) { where.push("s.started_at <= ?"); values.push(to); }
+
+  const sql = `SELECT s.id, s.user_id, s.team_id, s.status, s.started_at, s.ended_at, s.score,
+                      u.display_name, u.username, u.email,
+                      t.name AS team_name, t.kind AS team_kind,
+                      p.gender, p.age, p.occupation
+               FROM counseling_sessions s
+               JOIN users u ON u.id = s.user_id
+               LEFT JOIN teams t ON t.id = s.team_id
+               LEFT JOIN seeker_profiles p ON p.id = s.profile_id
+               ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+               ORDER BY s.started_at DESC
+               LIMIT ${limit}`;
+  const rows = await env.DB.prepare(sql).bind(...values).all<any>();
+  return jsonResponse((rows.results || []).map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    team_id: row.team_id,
+    status: row.status,
+    started_at: row.started_at,
+    ended_at: row.ended_at,
+    score: row.score,
+    display_name: row.display_name,
+    username: row.username,
+    email: row.email,
+    team_name: row.team_name,
+    team_kind: row.team_kind,
+    gender: row.gender,
+    age: row.age,
+    occupation: row.occupation,
+  })));
+}
+
+async function adminListUsers(request: Request, env: CloudflareEnv) {
+  const auth = await requireSystemAdmin(request, env);
+  if (auth instanceof Response) return auth;
+  const rows = await env.DB
+    .prepare(`SELECT id, username, display_name, email, is_admin, is_active FROM users ORDER BY display_name ASC LIMIT 1000`)
+    .all<any>();
+  return jsonResponse((rows.results || []).map((row) => ({
+    id: row.id,
+    username: row.username,
+    display_name: row.display_name,
+    email: row.email,
+    is_admin: Boolean(row.is_admin),
+    is_active: Boolean(row.is_active),
+  })));
+}
+
+async function adminListTeams(request: Request, env: CloudflareEnv) {
+  const auth = await requireSystemAdmin(request, env);
+  if (auth instanceof Response) return auth;
+  const rows = await env.DB
+    .prepare(`SELECT id, name, kind FROM teams ORDER BY created_at DESC LIMIT 500`)
+    .all<any>();
+  return jsonResponse(rows.results || []);
+}
+
+async function adminExportTranscripts(request: Request, env: CloudflareEnv) {
+  const auth = await requireSystemAdmin(request, env);
+  if (auth instanceof Response) return auth;
+
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("user_id") || "";
+  const sessionId = url.searchParams.get("session_id") || "";
+  const teamId = url.searchParams.get("team_id") || "";
+
+  const where: string[] = [];
+  const values: unknown[] = [];
+  if (sessionId) { where.push("s.id = ?"); values.push(sessionId); }
+  if (userId) { where.push("s.user_id = ?"); values.push(userId); }
+  if (teamId) { where.push("s.team_id = ?"); values.push(teamId); }
+
+  const sql = `SELECT s.id, s.user_id, s.team_id, s.messages, s.status, s.started_at, s.ended_at, s.score, s.evaluation,
+                      u.display_name, u.username, u.email,
+                      t.name AS team_name,
+                      p.gender, p.age, p.occupation, p.marital_status
+               FROM counseling_sessions s
+               JOIN users u ON u.id = s.user_id
+               LEFT JOIN teams t ON t.id = s.team_id
+               LEFT JOIN seeker_profiles p ON p.id = s.profile_id
+               ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+               ORDER BY u.display_name ASC, s.started_at DESC`;
+  const rowsResult = await env.DB.prepare(sql).bind(...values).all<any>();
+  const records = rowsResult.results || [];
+  if (!records.length) return errorResponse("没有匹配的咨询记录可导出", 404);
+
+  // 按 user 分组
+  const grouped = new Map<string, any[]>();
+  for (const row of records) {
+    const list = grouped.get(row.user_id) || [];
+    list.push(row);
+    grouped.set(row.user_id, list);
+  }
+
+  // 单会话 / 单用户 直接返回 DOCX
+  if (sessionId || (userId && grouped.size === 1)) {
+    const first = records[0];
+    const title = first.team_name ? `${first.team_name}·${first.display_name}` : first.display_name;
+    const buffer = await buildTranscriptDocx(title, {
+      display_name: first.display_name,
+      username: first.username,
+      email: first.email,
+    }, records);
+    const suffix = sessionId ? sanitizeFilenamePart(`${first.display_name}-${sessionId}`) : sanitizeFilenamePart(first.display_name);
+    return new Response(new Blob([toArrayBuffer(buffer)], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${suffix}.docx`)}`,
+      },
+    });
+  }
+
+  // 多人：每人一个 DOCX 打 ZIP
+  const zipEntries: Record<string, Uint8Array> = {};
+  for (const rows of grouped.values()) {
+    const first = rows[0];
+    const title = first.team_name ? `${first.team_name}·${first.display_name}` : first.display_name;
+    const buffer = await buildTranscriptDocx(title, {
+      display_name: first.display_name,
+      username: first.username,
+      email: first.email,
+    }, rows);
+    const teamPart = first.team_name ? `${sanitizeFilenamePart(first.team_name)}-` : "";
+    const filename = `${teamPart}${sanitizeFilenamePart(first.display_name)}-${sanitizeFilenamePart(first.username)}.docx`;
+    zipEntries[filename] = buffer;
+  }
+  zipEntries["README.txt"] = strToU8(`系统管理员导出\n导出时间：${nowIso()}\n共 ${Object.keys(zipEntries).length - 0} 份参赛者咨询实录 DOCX。\n筛选：user_id=${userId || "*"} team_id=${teamId || "*"}\n`);
+
+  const zipBuffer = zipSync(zipEntries);
+  const zipName = teamId ? `咨询实录-${sanitizeFilenamePart(records[0].team_name || teamId)}.zip` : `咨询实录-全部.zip`;
+  return new Response(new Blob([toArrayBuffer(zipBuffer)], { type: "application/zip" }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`,
+    },
+  });
+}
+
 async function handleApi(request: Request, env: CloudflareEnv) {
   const url = new URL(request.url);
   const { pathname } = url;
@@ -1618,6 +1788,11 @@ async function handleApi(request: Request, env: CloudflareEnv) {
   if (pathname === "/api/v1/auth/login" && request.method === "POST") return login(request, env);
   if (pathname === "/api/v1/auth/me" && request.method === "GET") return getMe(request, env);
   if (pathname === "/api/v1/auth/me" && request.method === "PATCH") return updateMe(request, env);
+
+  if (pathname === "/api/v1/admin/sessions" && request.method === "GET") return adminListSessions(request, env);
+  if (pathname === "/api/v1/admin/users" && request.method === "GET") return adminListUsers(request, env);
+  if (pathname === "/api/v1/admin/teams" && request.method === "GET") return adminListTeams(request, env);
+  if (pathname === "/api/v1/admin/transcripts" && request.method === "GET") return adminExportTranscripts(request, env);
 
   if (pathname === "/api/v1/teams" && request.method === "GET") return listTeams(request, env);
   if (pathname === "/api/v1/teams" && request.method === "POST") return createTeam(request, env);

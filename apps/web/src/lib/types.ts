@@ -11,6 +11,7 @@ export interface User {
   experience_level: string;
   specialization?: string;
   is_active: boolean;
+  is_admin?: boolean;
   accepted_terms_version?: string;
   accepted_terms_at?: string;
   research_consent?: boolean;

@@ -380,6 +380,67 @@ export const learning = {
   },
 };
 
-const api = { auth, simulator, knowledge, learning, teams };
+// ─── System Admin ────────────────────────────────
+export interface AdminSessionSummary {
+  id: string;
+  user_id: string;
+  team_id?: string | null;
+  status: string;
+  started_at: string;
+  ended_at?: string | null;
+  score?: number | null;
+  display_name: string;
+  username: string;
+  email: string;
+  team_name?: string | null;
+  team_kind?: "team" | "competition" | null;
+  gender?: string;
+  age?: string;
+  occupation?: string;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  username: string;
+  display_name: string;
+  email: string;
+  is_admin: boolean;
+  is_active: boolean;
+}
+
+export interface AdminTeamSummary {
+  id: string;
+  name: string;
+  kind: "team" | "competition";
+}
+
+export const admin = {
+  listSessions(params?: { user_id?: string; team_id?: string; status?: string; from?: string; to?: string; limit?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.user_id) qs.set("user_id", params.user_id);
+    if (params?.team_id) qs.set("team_id", params.team_id);
+    if (params?.status) qs.set("status", params.status);
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return request<AdminSessionSummary[]>(`/api/v1/admin/sessions${q ? `?${q}` : ""}`);
+  },
+  listUsers() {
+    return request<AdminUserSummary[]>(`/api/v1/admin/users`);
+  },
+  listTeams() {
+    return request<AdminTeamSummary[]>(`/api/v1/admin/teams`);
+  },
+  getTranscriptsUrl(params?: { user_id?: string; session_id?: string; team_id?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.user_id) qs.set("user_id", params.user_id);
+    if (params?.session_id) qs.set("session_id", params.session_id);
+    if (params?.team_id) qs.set("team_id", params.team_id);
+    return `${API_BASE}/api/v1/admin/transcripts${qs.toString() ? `?${qs.toString()}` : ""}`;
+  },
+};
+
+const api = { auth, simulator, knowledge, learning, teams, admin };
 
 export default api;

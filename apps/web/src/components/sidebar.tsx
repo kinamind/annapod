@@ -16,6 +16,7 @@ import {
   Sun,
   Moon,
   Languages,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -122,6 +123,24 @@ function NavContent({ onClose }: { onClose?: () => void }) {
             </Link>
           );
         })}
+        {user?.is_admin && (
+          <Link
+            href="/admin"
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+              pathname.startsWith("/admin")
+                ? "bg-primary/10 text-primary font-medium"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Shield className="h-4 w-4 shrink-0" />
+            <div className="flex flex-col">
+              <span>系统管理</span>
+              <span className="text-[10px] text-muted-foreground">全站咨询记录</span>
+            </div>
+          </Link>
+        )}
       </nav>
 
       {/* Theme & Language Controls */}
