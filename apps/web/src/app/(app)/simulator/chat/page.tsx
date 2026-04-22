@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId") ?? "";
+  const teamIdFromUrl = searchParams.get("teamId") ?? "";
   const router = useRouter();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -34,6 +35,7 @@ export default function ChatPage() {
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [sessionGroupId, setSessionGroupId] = useState<string | null>(null);
+  const [sessionTeamId, setSessionTeamId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
@@ -76,6 +78,7 @@ export default function ChatPage() {
           setTurnCount(cCount);
         }
         setSessionGroupId(data.session_group_id ?? null);
+        setSessionTeamId(data.team_id ?? null);
         setCurrentEmotion(data.current_emotion ?? null);
         setStartedAt(data.started_at ?? null);
         setTimeLimitSeconds(data.time_limit_seconds ?? null);
@@ -186,12 +189,18 @@ export default function ChatPage() {
     }
   };
 
+  const effectiveTeamId = sessionTeamId || teamIdFromUrl;
+  const teamQuery = effectiveTeamId ? `&teamId=${encodeURIComponent(effectiveTeamId)}` : "";
+  const simulatorHref = effectiveTeamId
+    ? `/simulator?teamId=${encodeURIComponent(effectiveTeamId)}`
+    : "/simulator";
+
   if (!sessionId) {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <Card className="max-w-md p-6 text-center">
           <p className="text-sm text-muted-foreground">缺少会话 ID，请从来访者列表重新进入。</p>
-          <Button className="mt-4" onClick={() => router.push("/simulator")}>返回模拟器</Button>
+          <Button className="mt-4" onClick={() => router.push(simulatorHref)}>返回模拟器</Button>
         </Card>
       </div>
     );
@@ -204,7 +213,7 @@ export default function ChatPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/simulator")}
+            onClick={() => router.push(simulatorHref)}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -333,7 +342,7 @@ export default function ChatPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => router.push("/simulator")}
+                  onClick={() => router.push(simulatorHref)}
                 >
                   再练一次
                 </Button>
@@ -343,8 +352,8 @@ export default function ChatPage() {
                   onClick={() =>
                     router.push(
                       sessionGroupId
-                        ? `/simulator?tab=sessions&groupId=${encodeURIComponent(sessionGroupId)}`
-                        : "/simulator?tab=sessions"
+                        ? `/simulator?tab=sessions&groupId=${encodeURIComponent(sessionGroupId)}${teamQuery}`
+                        : `/simulator?tab=sessions${teamQuery}`
                     )
                   }
                 >

@@ -121,7 +121,7 @@ function ProfileCard({
   );
 }
 
-function UserSessionsList({ groupId }: { groupId?: string }) {
+function UserSessionsList({ groupId, teamId }: { groupId?: string; teamId?: string }) {
   const { t } = useLocale();
   const router = useRouter();
 
@@ -129,6 +129,12 @@ function UserSessionsList({ groupId }: { groupId?: string }) {
     queryKey: ["my-sessions", groupId],
     queryFn: () => simulator.getSessions({ group_id: groupId || undefined }),
   });
+
+  const buildChatHref = (sesId: string) => {
+    const qs = new URLSearchParams({ sessionId: sesId });
+    if (teamId) qs.set("teamId", teamId);
+    return `/simulator/chat?${qs.toString()}`;
+  };
 
   if (isLoading) {
     return <div className="py-20 text-center text-muted-foreground">{t("simulator.loading") || "Loading..."}</div>;
@@ -177,7 +183,7 @@ function UserSessionsList({ groupId }: { groupId?: string }) {
         <div>
           <Button
             variant={ses.status === "completed" ? "outline" : "default"}
-            onClick={() => router.push(`/simulator/chat?sessionId=${encodeURIComponent(ses.id)}`)}
+            onClick={() => router.push(buildChatHref(ses.id))}
           >
             {ses.status === "completed" ? (
               <><Eye className="h-4 w-4 mr-2" /> View</>
@@ -328,7 +334,7 @@ export default function SimulatorPage() {
         enable_long_term_memory: enableLtm,
         team_id: selectedTeamId || undefined,
       });
-      router.push(`/simulator/chat?sessionId=${encodeURIComponent(res.session_id)}`);
+      router.push(`/simulator/chat?sessionId=${encodeURIComponent(res.session_id)}${selectedTeamId ? `&teamId=${encodeURIComponent(selectedTeamId)}` : ""}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("simulator.createFailed");
       toast.error(msg);
@@ -355,7 +361,13 @@ export default function SimulatorPage() {
         <p className="text-muted-foreground">{t("simulator.subtitle")}</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => router.replace(value === "sessions" && selectedGroupId ? `/simulator?tab=${value}&groupId=${encodeURIComponent(selectedGroupId)}` : `/simulator?tab=${value}`)} className="w-full">
+      <Tabs value={activeTab} onValueChange={(value) => {
+        const qs = new URLSearchParams();
+        qs.set("tab", value);
+        if (value === "sessions" && selectedGroupId) qs.set("groupId", selectedGroupId);
+        if (selectedTeamId) qs.set("teamId", selectedTeamId);
+        router.replace(`/simulator?${qs.toString()}`);
+      }} className="w-full">
         <TabsList className="grid w-full max-w-xl grid-cols-3 mb-6">
           <TabsTrigger value="profiles">{locale === "zh" ? "选择来访者" : "Profiles"}</TabsTrigger>
           <TabsTrigger value="groups">{locale === "zh" ? "长期记忆分组" : "Memory Groups"}</TabsTrigger>
@@ -364,8 +376,17 @@ export default function SimulatorPage() {
         <TabsContent value="profiles" className="space-y-6">
       {teamDetail && (
         <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-4 text-sm text-muted-foreground space-y-1">
-            <div className="font-medium text-foreground">当前正在进行团队/比赛训练：{teamDetail.name}</div>
+          <CardContent className="p-4 text-sm text-muted-foreground space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="font-medium text-foreground">当前正在进行团队/比赛训练：{teamDetail.name}</div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.replace(`/simulator?tab=${activeTab}`)}
+              >
+                退出比赛训练
+              </Button>
+            </div>
             <div>
               限定群体：{teamDetail.profile_group_tag || "不限"} · 限定难度：{teamDetail.profile_difficulty || "不限"} · 限定议题：{teamDetail.profile_issue_tag || "不限"}
             </div>
@@ -485,7 +506,7 @@ export default function SimulatorPage() {
           <SessionGroupsList />
         </TabsContent>
         <TabsContent value="sessions">
-          <UserSessionsList groupId={selectedGroupId || undefined} />
+          <UserSessionsList groupId={selectedGroupId || undefined} teamId={selectedTeamId || undefined} />
         </TabsContent>
       </Tabs>
     </div>
