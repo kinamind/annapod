@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,13 +10,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useLocale } from "@/lib/locale";
+import { auth } from "@/lib/api";
 
-export default function LoginPage() {
+function LoginPageInner() {
   const { t } = useLocale();
+  const params = useSearchParams();
+  const [ssoBusy, setSsoBusy] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const { login, isLoading } = useAuthStore();
   const router = useRouter();
+
+  // Surface failures bounced back from the KinaMind callback.
+  const ssoError = params.get("sso_error");
+  useEffect(() => {
+    if (ssoError) toast.error(`KinaMind 登录失败：${ssoError}`);
+  }, [ssoError]);
+
+  const handleKinamind = async () => {
+    setSsoBusy(true);
+    try {
+      await auth.kinamindStart("/dashboard");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "无法连接 KinaMind");
+      setSsoBusy(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +64,25 @@ export default function LoginPage() {
           </p>
         </CardHeader>
         <CardContent>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleKinamind}
+            disabled={ssoBusy}
+          >
+            {ssoBusy ? "跳转中…" : "使用 KinaMind 账号登录"}
+          </Button>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            一个 KinaMind 账号通行所有 KinaMind 应用
+          </p>
+
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            或使用 annapod 账号
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">{t("auth.login.user")}</Label>
@@ -81,5 +119,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

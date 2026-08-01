@@ -4,6 +4,13 @@
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
 import { zipSync, strToU8 } from "fflate";
 import { getAuthUserId, hashPassword, signJwt, verifyPassword } from "./auth";
+import {
+  startKinamindLogin,
+  handleKinamindCallback,
+  claimKinamindTicket,
+  linkKinamindAccount,
+  unlinkKinamindAccount,
+} from "./kinamind-sso";
 import { DIFFICULTY_LEVELS, EVALUATION_DIMENSIONS, GROUP_OPTIONS, ISSUE_OPTIONS, SCHOOL_OPTIONS } from "./constants";
 import { indexLongTermMemory } from "./memory";
 import { chatWithSnapshot, createInitialSnapshot } from "./session-engine";
@@ -787,7 +794,12 @@ async function login(request: Request, env: CloudflareEnv) {
     .prepare(`SELECT * FROM users WHERE username = ? OR email = ?`)
     .bind(username, username)
     .first<any>();
-  if (!user || !(await verifyPassword(password, user.hashed_password))) {
+  if (!user || !user.hashed_password) {
+    // Accounts created through KinaMind SSO have no local password until they
+    // set one, so password login must be refused rather than crash.
+    return errorResponse("用户名或密码错误", 401);
+  }
+  if (!(await verifyPassword(password, user.hashed_password))) {
     return errorResponse("用户名或密码错误", 401);
   }
   if (!user.is_active) return errorResponse("账户已被禁用", 403);
@@ -816,6 +828,9 @@ async function getMe(request: Request, env: CloudflareEnv) {
     accepted_terms_version: user.accepted_terms_version,
     accepted_terms_at: user.accepted_terms_at,
     research_consent: Boolean(user.research_consent),
+    has_password: Boolean(user.hashed_password),
+    kinamind_linked: Boolean(user.kinamind_sub),
+    kinamind_linked_at: user.kinamind_linked_at ?? null,
   });
 }
 
@@ -851,6 +866,9 @@ async function updateMe(request: Request, env: CloudflareEnv) {
     accepted_terms_version: user.accepted_terms_version,
     accepted_terms_at: user.accepted_terms_at,
     research_consent: Boolean(user.research_consent),
+    has_password: Boolean(user.hashed_password),
+    kinamind_linked: Boolean(user.kinamind_sub),
+    kinamind_linked_at: user.kinamind_linked_at ?? null,
   });
 }
 
@@ -1788,6 +1806,13 @@ async function handleApi(request: Request, env: CloudflareEnv) {
   if (pathname === "/api/v1/auth/login" && request.method === "POST") return login(request, env);
   if (pathname === "/api/v1/auth/me" && request.method === "GET") return getMe(request, env);
   if (pathname === "/api/v1/auth/me" && request.method === "PATCH") return updateMe(request, env);
+
+  // Sign in with KinaMind (kinamind.org acts as the OIDC provider).
+  if (pathname === "/api/v1/auth/kinamind/start" && request.method === "POST") return startKinamindLogin(request, env);
+  if (pathname === "/api/v1/auth/kinamind/callback" && request.method === "GET") return handleKinamindCallback(request, env);
+  if (pathname === "/api/v1/auth/kinamind/claim" && request.method === "POST") return claimKinamindTicket(request, env);
+  if (pathname === "/api/v1/auth/kinamind/link" && request.method === "POST") return linkKinamindAccount(request, env);
+  if (pathname === "/api/v1/auth/kinamind/unlink" && request.method === "POST") return unlinkKinamindAccount(request, env);
 
   if (pathname === "/api/v1/admin/sessions" && request.method === "GET") return adminListSessions(request, env);
   if (pathname === "/api/v1/admin/users" && request.method === "GET") return adminListUsers(request, env);

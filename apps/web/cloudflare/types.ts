@@ -37,6 +37,9 @@ export interface CloudflareEnv {
   EMBEDDING_MODEL?: string;
   JWT_SECRET: string;
   CORS_ORIGIN?: string;
+  /** OAuth client credentials issued by kinamind.org (Sign in with KinaMind). */
+  KINAMIND_CLIENT_ID?: string;
+  KINAMIND_CLIENT_SECRET?: string;
 }
 
 export interface SeekerProfileRecord {

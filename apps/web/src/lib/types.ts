@@ -15,6 +15,11 @@ export interface User {
   accepted_terms_version?: string;
   accepted_terms_at?: string;
   research_consent?: boolean;
+  /** False for accounts provisioned through KinaMind SSO that never set one. */
+  has_password?: boolean;
+  /** Whether this account is bound to a kinamind.org identity. */
+  kinamind_linked?: boolean;
+  kinamind_linked_at?: string | null;
 }
 
 export interface Token {

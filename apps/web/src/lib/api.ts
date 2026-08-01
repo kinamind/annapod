@@ -102,6 +102,35 @@ export const auth = {
     return request<User>("/api/v1/auth/me");
   },
 
+  /** Starts the KinaMind flow and navigates the browser to the provider. */
+  async kinamindStart(returnTo = "/dashboard", intent?: "link") {
+    const { authorize_url } = await request<{ authorize_url: string }>(
+      "/api/v1/auth/kinamind/start",
+      { method: "POST", body: JSON.stringify({ return_to: returnTo, intent }) }
+    );
+    window.location.href = authorize_url;
+  },
+
+  /** Exchanges a single-use SSO ticket for the annapod bearer token. */
+  kinamindClaim(ticket: string) {
+    return request<Token>("/api/v1/auth/kinamind/claim", {
+      method: "POST",
+      body: JSON.stringify({ ticket }),
+    });
+  },
+
+  /** Binds a KinaMind identity to an existing annapod account. */
+  kinamindLink(ticket: string, password: string) {
+    return request<Token>("/api/v1/auth/kinamind/link", {
+      method: "POST",
+      body: JSON.stringify({ ticket, password }),
+    });
+  },
+
+  kinamindUnlink() {
+    return request<{ ok: boolean }>("/api/v1/auth/kinamind/unlink", { method: "POST" });
+  },
+
   updateMe(data: Partial<User>) {
     return request<User>("/api/v1/auth/me", {
       method: "PATCH",

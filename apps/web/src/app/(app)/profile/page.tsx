@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
 import { auth } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,9 +28,46 @@ const EXPERIENCE_LEVELS = [
   { value: "supervisor", label: "督导师" },
 ];
 
-export default function ProfilePage() {
+function ProfilePageInner() {
   const { user, loadUser } = useAuthStore();
+  const params = useSearchParams();
   const [saving, setSaving] = useState(false);
+  const [ssoBusy, setSsoBusy] = useState(false);
+  const ssoResult = params.get("sso");
+  const ssoError = params.get("sso_error");
+  useEffect(() => {
+    if (ssoResult === "linked") {
+      toast.success("已绑定 KinaMind 账号");
+      void loadUser();
+    }
+    if (ssoError === "already_linked_elsewhere") {
+      toast.error("该 KinaMind 账号已绑定到另一个 annapod 账号");
+    }
+  }, [ssoResult, ssoError, loadUser]);
+
+  const handleLink = async () => {
+    setSsoBusy(true);
+    try {
+      await auth.kinamindStart("/profile", "link");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "无法连接 KinaMind");
+      setSsoBusy(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setSsoBusy(true);
+    try {
+      await auth.kinamindUnlink();
+      await loadUser();
+      toast.success("已解除绑定");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "解除绑定失败");
+    } finally {
+      setSsoBusy(false);
+    }
+  };
+
   const [form, setForm] = useState({
     display_name: user?.display_name ?? "",
     bio: user?.bio ?? "",
@@ -147,6 +185,44 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
+      {/* KinaMind SSO binding */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">KinaMind 账号</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            绑定后即可用 KinaMind 账号登录 annapod，同一身份也可用于其他 KinaMind 应用。
+            绑定不会影响你现有的会话、团队与评分记录。
+          </p>
+          {user.kinamind_linked ? (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-emerald-500">已绑定</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleUnlink}
+                disabled={ssoBusy || user.has_password === false}
+              >
+                解除绑定
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">未绑定</span>
+              <Button variant="outline" size="sm" onClick={handleLink} disabled={ssoBusy}>
+                {ssoBusy ? "跳转中…" : "绑定 KinaMind 账号"}
+              </Button>
+            </div>
+          )}
+          {user.kinamind_linked && user.has_password === false && (
+            <p className="text-xs text-muted-foreground">
+              这是你唯一的登录方式，解除绑定前请先设置 annapod 密码。
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Account Info */}
       <Card>
         <CardHeader>
@@ -166,5 +242,13 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfilePageInner />
+    </Suspense>
   );
 }
